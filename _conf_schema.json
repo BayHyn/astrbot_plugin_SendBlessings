@@ -2,25 +2,49 @@
   "enabled": {
     "description": "启用节假日祝福插件",
     "type": "bool",
-    "default": true
+    "default": false
   },
-  "image_gen_url": {
-    "description": "图片生成API URL",
-    "type": "string",
-    "hint": "例如：https://api.gemini.com/generate-image",
-    "default": ""
+  "openrouter_api_keys": {
+    "description": "OpenRouter API 密钥列表（支持多个密钥自动轮换）",
+    "type": "list",
+    "hint": "请前往 https://openrouter.ai/ 注册账号，并获取多个 OpenRouter API Key。支持多个密钥自动轮换，当一个密钥额度耗尽时会自动切换到下一个",
+    "default": [
+      "your_openrouter_api_key_here"
+    ],
+    "obvious_hint": true
   },
-  "image_gen_api_key": {
-    "description": "图片生成API Key",
+  "model_name": {
+    "description": "使用的图像生成模型名称",
     "type": "string",
-    "hint": "输入图片生成API密钥",
-    "default": ""
+    "hint": "OpenRouter 支持的图像生成模型，例如：google/gemini-2.5-flash-image-preview:free（默认免费模型）",
+    "default": "google/gemini-2.5-flash-image-preview:free",
+    "obvious_hint": true
   },
-  "reference_image_path": {
-    "description": "参考图片路径（可选，用于自定义节日图片风格）",
+  "max_retry_attempts": {
+    "description": "每个API密钥的最大重试次数",
+    "type": "int",
+    "hint": "当API请求失败时，每个密钥最多重试几次。推荐2-5次",
+    "default": 3,
+    "obvious_hint": true
+  },
+  "custom_api_base": {
+    "description": "自定义 API Base URL（可选）",
     "type": "string",
-    "hint": "本地文件路径，上传后存储在data目录",
-    "default": ""
+    "hint": "自定义的 API 基础地址，如果不填写则使用默认的 OpenRouter API 地址",
+    "default": "",
+    "obvious_hint": false
+  },
+  "nap_server_address": {
+    "description": "NAP cat 服务地址",
+    "type": "string",
+    "hint": "若与服务器在同一服务器上请填写 localhost",
+    "default": "localhost"
+  },
+  "nap_server_port": {
+    "description": "NAP cat 服务端口",
+    "type": "int",
+    "hint": "文件传输端口",
+    "default": 3658
   },
   "holidays_file": {
     "description": "节假日数据文件路径",

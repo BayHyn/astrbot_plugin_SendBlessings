@@ -11,6 +11,11 @@ from chinese_calendar import is_holiday, is_workday
 import chinese_calendar as calendar
 from cn_bing_translator import Translator
 
+# 导入 utils 中的函数
+from utils.ttp import generate_image_openrouter, cleanup_old_images
+from utils.file_send_server import send_file
+
+
 def translate_holiday_name(holiday_name):
     """翻译节日名称，失败时返回原名"""
     if not holiday_name:
@@ -22,6 +27,7 @@ def translate_holiday_name(holiday_name):
     except:
         return holiday_name
 
+
 def load_holidays_from_json(json_file):
     """从 JSON 文件加载节假日数据"""
     if json_file is None:
@@ -31,6 +37,7 @@ def load_holidays_from_json(json_file):
             data = json.load(f)
             return data.get('year'), data.get('holidays', [])
     return None, []
+
 
 def save_holidays_to_json(year, holidays, json_file):
     """保存节假日数据到 JSON 文件"""
@@ -43,6 +50,7 @@ def save_holidays_to_json(year, holidays, json_file):
     with open(json_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     print(f"节假日数据已保存到 {json_file}")
+
 
 def get_year_holidays(year, json_file=None):
     """获取指定年份的节假日信息"""
@@ -93,6 +101,7 @@ def get_year_holidays(year, json_file=None):
     
     return holidays
 
+
 def get_current_year_holidays(json_file=None):
     """获取当前年份节假日"""
     current_year = datetime.date.today().year
@@ -106,6 +115,7 @@ def get_current_year_holidays(json_file=None):
         holidays = get_year_holidays(current_year, json_file)
         save_holidays_to_json(current_year, holidays, json_file)
         return holidays
+
 
 def print_holidays_summary(holidays, year):
     """输出节假日摘要"""
@@ -121,6 +131,7 @@ def print_holidays_summary(holidays, year):
     print(f"调休日数：{lieu_count}")
     print(f"假期第一天数：{first_day_count}")
 
+
 def check_single_date(date_input, holidays):
     """检查单个日期（内联使用）"""
     for h in holidays:
@@ -134,14 +145,26 @@ def check_single_date(date_input, holidays):
             return
     print(f"{date_input} 未找到记录")
 
+
 @register("SendBlessings", "Cheng-MaoMao", "在节假日送上祝福的插件", "1.0.0")
 class SendBlessingsPlugin(Star):
     def __init__(self, context: Context, config):
         super().__init__(context)
         self.config = config
         self.json_file = os.path.join(self.context.get_config().get('data_dir', 'data'), self.config.get('holidays_file', 'holidays.json'))
+        
+        # 加载 OpenRouter 配置
+        self.openrouter_api_keys = config.get("openrouter_api_keys", [])
+        self.model_name = config.get("model_name", "google/gemini-2.5-flash-image-preview:free")
+        self.max_retry_attempts = config.get("max_retry_attempts", 3)
+        self.custom_api_base = config.get("custom_api_base", "").strip()
+        
+        # 加载 NAP 配置
+        self.nap_server_address = config.get("nap_server_address", "localhost")
+        self.nap_server_port = config.get("nap_server_port", 3658)
+        
         self.holidays = []
-        self.target_sessions = self.config.get('target_sessions', [])
+        self.target_sessions = []  # 用户需在此设置目标会话列表，如 ['aiocqhttp:GROUP:123456']
         self.logger = logger
 
     async def initialize(self):
@@ -278,56 +301,38 @@ class SendBlessingsPlugin(Star):
                     self.holidays = get_year_holidays(next_year, self.json_file)
                     save_holidays_to_json(next_year, self.holidays, self.json_file)
                     self.logger.info(f"{next_year}年节假日数据已预加载")
-                    
+                
             except Exception as e:
                 self.logger.error(f"每日检查出错: {e}")
                 await asyncio.sleep(3600)  # 出错时1小时后重试
     
     async def generate_blessing(self, holiday_name: str) -> str:
-        """生成节日祝福语（直接调用自定义LLM API）"""
+        """生成节日祝福语"""
         try:
             # 使用websearch查询习俗和祝福语
             customs = await self.query_holiday_customs(holiday_name)
             if not customs:
                 customs = f"{holiday_name}传统节日"
             
-            # 直接调用自定义LLM API
-            llm_url = self.config.get('llm_url')
-            api_key = self.config.get('llm_api_key')
-            model = self.config.get('llm_model', 'gpt-3.5-turbo')
-            if not llm_url or not api_key:
-                self.logger.error("LLM配置不完整")
+            # 调用AstrBot内置LLM
+            provider = self.context.get_using_provider()
+            if not provider:
+                self.logger.error("未找到LLM提供商")
                 return None
             
             prompt = f"你是一个温暖的AI助手。请基于以下节日信息生成一段简短、积极的中文祝福语（50-100字），适合发送给朋友或群聊。节日：{holiday_name}，习俗/背景：{customs}。祝福语要真挚、节日氛围浓厚。"
             
-            headers = {
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            }
-            data = {
-                'model': model,
-                'messages': [
-                    {'role': 'system', 'content': '你是一个专业的节日祝福生成器，输出仅为祝福语文本，不要添加额外解释。'},
-                    {'role': 'user', 'content': prompt}
-                ],
-                'max_tokens': 150,
-                'temperature': 0.7
-            }
+            resp = await provider.text_chat(
+                prompt=prompt,
+                system_prompt="你是一个专业的节日祝福生成器，输出仅为祝福语文本，不要添加额外解释。",
+                model="gpt-3.5-turbo"  # 使用本体默认模型
+            )
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(llm_url, json=data, headers=headers) as resp:
-                    if resp.status == 200:
-                        result = await resp.json()
-                        blessing = result.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
-                        if blessing:
-                            self.logger.info(f"LLM生成祝福成功: {blessing[:50]}...")
-                            return blessing
-                        else:
-                            self.logger.error("LLM响应中无内容")
-                    else:
-                        self.logger.error(f"LLM API错误: {resp.status} - {await resp.text()}")
-                        
+            if resp and resp.completion_text:
+                return resp.completion_text.strip()
+            else:
+                self.logger.error("LLM响应为空")
+                return None
         except Exception as e:
             self.logger.error(f"生成祝福语失败: {e}")
             return None
@@ -366,47 +371,37 @@ class SendBlessingsPlugin(Star):
             return f"{holiday_name}传统节日"
     
     async def generate_image(self, blessing: str, holiday_name: str) -> str:
-        """生成节日祝福图片"""
+        """生成节日祝福图片，使用 OpenRouter API"""
         try:
-            prompt = f"{holiday_name} 节日祝福海报，温暖喜庆风格，包含文字：{blessing[:50]}...，节日元素如灯笼/花朵/雪花等，高质量，卡通插画"
+            # 构建图像生成提示词
+            prompt = f"{holiday_name} 节日祝福海报，温暖喜庆风格，包含文字：{blessing[:50]}...，节日元素如灯笼/花朵/雪花等，高质量，卡通插画风格，节日氛围浓厚，中文文字清晰可见"
             
-            if self.config.get('reference_image_path'):
-                # 如果有参考图，包含在prompt中（假设API支持image-to-image或prompt描述）
-                prompt += f"，参考风格：{self.config['reference_image_path']}"
-                # 实际中，如果API支持上传参考图，需要额外处理文件上传
+            # 调用 utils 中的生成函数
+            image_url, image_path = await generate_image_openrouter(
+                prompt=prompt,
+                api_keys=self.openrouter_api_keys,
+                model=self.model_name,
+                max_retry_attempts=self.max_retry_attempts,
+                api_base=self.custom_api_base if self.custom_api_base else None
+            )
             
-            url = self.config.get('image_gen_url')
-            api_key = self.config.get('image_gen_api_key')
-            if not url or not api_key:
-                self.logger.error("图片生成配置不完整")
+            if not image_url or not image_path:
+                self.logger.error("图片生成失败")
                 return None
             
-            headers = {
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            }
-            data = {
-                'prompt': prompt,
-                'model': self.config.get('llm_model', 'gemini-1.5-pro'),  # 假设使用相同模型或自定义
-                'width': 800,
-                'height': 600,
-                'n': 1
-            }
+            # 处理 NAP 文件传输
+            if self.nap_server_address and self.nap_server_address != "localhost":
+                try:
+                    image_path = await send_file(image_path, host=self.nap_server_address, port=self.nap_server_port)
+                    self.logger.info(f"NAP 传输成功: {image_path}")
+                except Exception as e:
+                    self.logger.warning(f"NAP 传输失败，回退本地路径: {e}")
+                    # 回退使用本地路径
+                    pass
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=data, headers=headers) as resp:
-                    if resp.status == 200:
-                        result = await resp.json()
-                        # 假设API返回image_url在result['data'][0]['url']
-                        image_url = result.get('data', [{}])[0].get('url', '')
-                        if image_url:
-                            self.logger.info(f"图片生成成功: {image_url}")
-                            return image_url
-                        else:
-                            self.logger.error("API响应中无图片URL")
-                    else:
-                        self.logger.error(f"图片生成API错误: {resp.status} - {await resp.text()}")
-                        
+            self.logger.info(f"节日图片生成成功: {image_path}")
+            return image_url
+            
         except Exception as e:
             self.logger.error(f"生成图片失败: {e}")
-        return None
+            return None
