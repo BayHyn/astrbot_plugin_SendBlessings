@@ -4,33 +4,6 @@
     "type": "bool",
     "default": true
   },
-  "target_sessions": {
-    "description": "目标会话列表（unified_msg_origin格式，如 'aiocqhttp:GROUP:123456' 或 'aiocqhttp:FRIEND:789012'），用于主动发送祝福消息",
-    "type": "list",
-    "hint": "例如：['aiocqhttp:GROUP:123456789']，多个用逗号分隔",
-    "items": {
-      "type": "string"
-    },
-    "default": []
-  },
-  "llm_url": {
-    "description": "大模型API URL（用于生成祝福语）",
-    "type": "string",
-    "hint": "例如：https://api.openai.com/v1/chat/completions",
-    "default": ""
-  },
-  "llm_api_key": {
-    "description": "大模型API Key",
-    "type": "string",
-    "hint": "输入您的API密钥",
-    "default": ""
-  },
-  "llm_model": {
-    "description": "大模型名称",
-    "type": "string",
-    "hint": "例如：gpt-3.5-turbo",
-    "default": "gpt-3.5-turbo"
-  },
   "image_gen_url": {
     "description": "图片生成API URL",
     "type": "string",
@@ -48,12 +21,6 @@
     "type": "string",
     "hint": "本地文件路径，上传后存储在data目录",
     "default": ""
-  },
-  "mcp_server_name": {
-    "description": "MCP服务器名称（用于查询节日习俗）",
-    "type": "string",
-    "hint": "例如：tavily-mcp",
-    "default": "tavily-mcp"
   },
   "holidays_file": {
     "description": "节假日数据文件路径",
