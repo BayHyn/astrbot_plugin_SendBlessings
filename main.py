@@ -1,14 +1,13 @@
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
-from astrbot.api.message_components import Comp
+import astrbot.api.message_components as Comp
 import asyncio
 import aiohttp
 import json
 import os
 import datetime
 from holidays_get import get_current_year_holidays, print_holidays_summary, check_single_date, translate_holiday_name
-from astrbot.api.provider import ProviderRequest
 
 @register("SendBlessings", "Cheng-MaoMao", "在节假日送上祝福的插件", "1.0.0")
 class SendBlessingsPlugin(Star):
@@ -192,30 +191,38 @@ class SendBlessingsPlugin(Star):
             return None
     
     async def query_holiday_customs(self, holiday_name: str) -> str:
-        """使用MCP工具查询节日习俗"""
+        """使用AstrBot内置websearch查询节日习俗"""
         try:
-            # 调用tavily-search工具（假设远程MCP可用）
-            tool_call = {
-                "server_name": self.config.get('mcp_server_name', 'tavily-mcp'),
-                "tool_name": "tavily-search",
-                "arguments": {
-                    "query": f"{holiday_name} 节日习俗 传统祝福语",
-                    "max_results": 3,
-                    "search_depth": "basic"
-                }
-            }
+            # 获取AstrBot websearch实例
+            websearch = self.context.get_websearch()
+            if not websearch:
+                self.logger.error("未找到websearch提供商")
+                return f"{holiday_name}传统节日"
             
-            # 注意：在实际AstrBot环境中，需要通过适当方式调用MCP；这里模拟为占位
-            # 实际实现中，可能需要self.context或其他方式触发use_mcp_tool
-            # 为兼容，假设返回示例结果
-            # 真实环境中，使用use_mcp_tool并处理响应
-            customs = "这是一个传统节日，人们会聚在一起庆祝，交换祝福，享受美食和家庭时光。"  # 模拟响应
+            # 执行搜索
+            query = f"{holiday_name} 节日习俗 传统祝福语 中国"
+            results = await websearch.search(query=query, max_results=3)
             
-            self.logger.info(f"查询 {holiday_name} 习俗: {customs[:100]}...")
+            if results:
+                # 提取结果摘要
+                customs_parts = []
+                for result in results:
+                    # 假设结果有title, content/snippet, url
+                    content = result.get('content') or result.get('snippet', '')
+                    if content:
+                        customs_parts.append(content[:200])
+                
+                customs = ' '.join(customs_parts)
+                if not customs.strip():
+                    customs = f"{holiday_name}传统节日，涉及家庭团聚和庆祝习俗。"
+            else:
+                customs = f"{holiday_name}是中国传统节日，通常包括家庭团聚、祭祖、吃特色食物和互赠祝福，象征团圆与喜庆。"
+            
+            self.logger.info(f"websearch查询 {holiday_name} 习俗: {customs[:100]}...")
             return customs
             
         except Exception as e:
-            self.logger.error(f"MCP查询失败: {e}")
+            self.logger.error(f"websearch查询失败: {e}")
             return f"{holiday_name}传统节日"
     
     async def generate_image(self, blessing: str, holiday_name: str) -> str:
