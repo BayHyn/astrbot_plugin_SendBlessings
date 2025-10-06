@@ -25,7 +25,7 @@
   "holidays_file": {
     "description": "节假日数据文件路径",
     "type": "string",
-    "hint": "默认：data/holidays.json",
-    "default": "data/holidays.json"
+    "hint": "默认：./holidays.json",
+    "default": "./holidays.json"
   }
 }
