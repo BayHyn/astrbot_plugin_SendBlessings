@@ -1,0 +1,4 @@
+aiohttp
+chinese_calendar
+cn_bing_translator
+requests
