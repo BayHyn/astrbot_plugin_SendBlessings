@@ -405,7 +405,7 @@ class SendBlessingsPlugin(Star):
                 user_id = friend.get('user_id')
                 if not user_id: continue
                 session = MessageSession(
-                    platform_name=\"aiocqhttp\",
+                    platform_name="aiocqhttp",
                     message_type=MessageType.FRIEND_MESSAGE,
                     session_id=str(user_id)
                 )
@@ -423,7 +423,7 @@ class SendBlessingsPlugin(Star):
                 group_id = group.get('group_id')
                 if not group_id: continue
                 session = MessageSession(
-                    platform_name=\"aiocqhttp\",
+                    platform_name="aiocqhttp",
                     message_type=MessageType.GROUP_MESSAGE,
                     session_id=str(group_id)
                 )
@@ -613,7 +613,7 @@ class SendBlessingsPlugin(Star):
                         user_id = friend.get('user_id')
                         if not user_id: continue
                         session = MessageSession(
-                            platform_name=\"aiocqhttp\",
+                            platform_name="aiocqhttp",
                             message_type=MessageType.FRIEND_MESSAGE,
                             session_id=str(user_id)
                         )
@@ -630,7 +630,7 @@ class SendBlessingsPlugin(Star):
                         group_id = group.get('group_id')
                         if not group_id: continue
                         session = MessageSession(
-                            platform_name=\"aiocqhttp\",
+                            platform_name="aiocqhttp",
                             message_type=MessageType.GROUP_MESSAGE,
                             session_id=str(group_id)
                         )
