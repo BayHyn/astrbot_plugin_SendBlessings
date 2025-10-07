@@ -363,9 +363,11 @@ class SendBlessingsPlugin(Star):
         [管理员指令] 向所有已连接的群组和好友发送一条测试消息，以验证广播功能。
         """
         try:
+            yield event.plain_result("正在开始广播功能测试... 此功能仅为 NapCatQQ 设计，请确保您正在使用 aiocqhttp 适配器。")
+            
             platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
             if not platform or not hasattr(platform, "get_client"):
-                yield event.plain_result("仅支持在 aiocqhttp 平台下进行测试。")
+                yield event.plain_result("错误：无法获取 aiocqhttp 平台适配器。测试中止。")
                 return
 
             client = platform.get_client()
@@ -401,7 +403,7 @@ class SendBlessingsPlugin(Star):
             for friend in friend_list:
                 user_id = friend.get('user_id')
                 if not user_id: continue
-                session_str = f"aiocqhttp:friend_message:{user_id}"
+                session_str = f"aiocqhttp:private:{user_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
@@ -415,7 +417,7 @@ class SendBlessingsPlugin(Star):
             for group in group_list:
                 group_id = group.get('group_id')
                 if not group_id: continue
-                session_str = f"aiocqhttp:group_message:{group_id}"
+                session_str = f"aiocqhttp:group:{group_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
@@ -585,7 +587,7 @@ class SendBlessingsPlugin(Star):
                     # 4. 发送到所有目标会话
                     platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
                     if not platform or not hasattr(platform, "get_client"):
-                        self.logger.error("无法获取 aiocqhttp 平台实例，无法发送广播祝福。")
+                        self.logger.error("无法获取 aiocqhttp 平台实例（可能未使用 NapCatQQ），无法发送广播祝福。")
                         continue
 
                     client = platform.get_client()
@@ -601,7 +603,7 @@ class SendBlessingsPlugin(Star):
                     for friend in friend_list:
                         user_id = friend.get('user_id')
                         if not user_id: continue
-                        session_str = f"aiocqhttp:friend_message:{user_id}"
+                        session_str = f"aiocqhttp:private:{user_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
@@ -614,7 +616,7 @@ class SendBlessingsPlugin(Star):
                     for group in group_list:
                         group_id = group.get('group_id')
                         if not group_id: continue
-                        session_str = f"aiocqhttp:group_message:{group_id}"
+                        session_str = f"aiocqhttp:group:{group_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
