@@ -2,7 +2,6 @@ from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 import astrbot.api.message_components as Comp
-from astrbot.core.platform.sources.aiocqhttp.adapter import AiocqhttpAdapter
 import asyncio
 import aiohttp
 import aiofiles
@@ -365,7 +364,7 @@ class SendBlessingsPlugin(Star):
         """
         try:
             platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
-            if not isinstance(platform, AiocqhttpAdapter):
+            if not platform or not hasattr(platform, "get_client"):
                 yield event.plain_result("仅支持在 aiocqhttp 平台下进行测试。")
                 return
 
@@ -585,7 +584,7 @@ class SendBlessingsPlugin(Star):
                     
                     # 4. 发送到所有目标会话
                     platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
-                    if not isinstance(platform, AiocqhttpAdapter):
+                    if not platform or not hasattr(platform, "get_client"):
                         self.logger.error("无法获取 aiocqhttp 平台实例，无法发送广播祝福。")
                         continue
 
