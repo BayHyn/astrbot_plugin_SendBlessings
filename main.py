@@ -2,6 +2,7 @@ from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 import astrbot.api.message_components as Comp
+from astrbot.api.platform import AiocqhttpAdapter
 import asyncio
 import aiohttp
 import aiofiles
@@ -217,7 +218,7 @@ def check_single_date(date_input: date, holidays: list):
     logger.info(f"查询结果: 在 {date_input.year} 年的记录中未找到 {date_input}。")
 
 
-@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.0.4")
+@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.0.5")
 class SendBlessingsPlugin(Star):
     """
     自动发送节假日祝福插件。
@@ -258,8 +259,6 @@ class SendBlessingsPlugin(Star):
         self.max_reference_images = self.reference_images_config.get("max_images", 3)
         
         self.holidays = []
-        self.user_limits = config.get("user_limits", [])
-        self.group_limits = config.get("group_limits", [])
         self.logger = logger
         
         # 在后台启动异步初始化任务
@@ -365,14 +364,28 @@ class SendBlessingsPlugin(Star):
     @filter.command("blessings test")
     async def test_target_sessions(self, event: AstrMessageEvent):
         """
-        [管理员指令] 向配置文件中指定的所有目标会话发送一条测试消息，以验证配置是否正确。
+        [管理员指令] 向所有已连接的群组和好友发送一条测试消息，以验证广播功能。
         """
         try:
-            if not self.user_limits and not self.group_limits:
-                yield event.plain_result("未配置目标会话列表，请在配置文件中添加 `user_limits` 或 `group_limits`。")
+            platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
+            if not isinstance(platform, AiocqhttpAdapter):
+                yield event.plain_result("仅支持在 aiocqhttp 平台下进行测试。")
                 return
 
-            test_blessing = "🎉 这是一条测试消息，用于验证目标会话配置是否正确。如果您收到此消息，说明配置成功！"
+            client = platform.get_client()
+            if not client:
+                yield event.plain_result("无法获取 aiocqhttp 客户端实例。")
+                return
+
+            # 获取好友和群组列表
+            friend_list = await client.api.call_action("get_friend_list")
+            group_list = await client.api.call_action("get_group_list")
+
+            if not friend_list and not group_list:
+                yield event.plain_result("未能获取到任何好友或群组列表。")
+                return
+
+            test_blessing = "🎉 这是一条广播功能测试消息。如果您收到此消息，说明插件可以正常向您发送祝福！"
             
             test_image_url, test_image_path = None, None
             if self.openrouter_api_keys:
@@ -388,30 +401,36 @@ class SendBlessingsPlugin(Star):
             success_count = 0
             failed_sessions_info = []
             
-            # 发送到目标用户
-            for user_id in self.user_limits:
+            # 发送到所有好友
+            for friend in friend_list:
+                user_id = friend.get('user_id')
+                if not user_id: continue
                 session_str = f"aiocqhttp:FRIEND_MESSAGE:{user_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
                     self.logger.info(f"测试消息已发送到用户 {user_id}")
+                    await asyncio.sleep(1) # 避免发送过快
                 except Exception as e:
                     failed_sessions_info.append(f"用户 {user_id} (原因: {e})")
                     self.logger.error(f"发送测试消息到用户 {user_id} 失败: {e}")
 
-            # 发送到目标群组
-            for group_id in self.group_limits:
+            # 发送到所有群组
+            for group in group_list:
+                group_id = group.get('group_id')
+                if not group_id: continue
                 session_str = f"aiocqhttp:GROUP_MESSAGE:{group_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
                     self.logger.info(f"测试消息已发送到群组 {group_id}")
+                    await asyncio.sleep(1) # 避免发送过快
                 except Exception as e:
                     failed_sessions_info.append(f"群组 {group_id} (原因: {e})")
                     self.logger.error(f"发送测试消息到群组 {group_id} 失败: {e}")
 
-            total_targets = len(self.user_limits) + len(self.group_limits)
-            result_message = f"测试完成！共 {total_targets} 个目标。\n✅ 成功发送: {success_count} 个会话\n"
+            total_targets = len(friend_list) + len(group_list)
+            result_message = f"测试完成！共扫描到 {total_targets} 个目标。\n✅ 成功发送: {success_count} 个会话\n"
             if failed_sessions_info:
                 result_message += f"❌ 发送失败: {len(failed_sessions_info)} 个会话\n"
                 result_message += f"失败详情: {', '.join(failed_sessions_info[:3])}"
@@ -536,10 +555,7 @@ class SendBlessingsPlugin(Star):
     
     async def daily_blessing_checker(self):
         """
-        每日检查并发送祝福的核心后台任务。
-
-        这是一个无限循环，每天执行一次检查。如果当天是节假日的第一天，
-        并且插件已启用，则会自动生成并向所有目标会话发送祝福。
+        每日检查并向所有群组和好友发送祝福的核心后台任务。
         """
         while True:
             try:
@@ -571,31 +587,50 @@ class SendBlessingsPlugin(Star):
                     ]
                     
                     # 4. 发送到所有目标会话
+                    platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
+                    if not isinstance(platform, AiocqhttpAdapter):
+                        self.logger.error("无法获取 aiocqhttp 平台实例，无法发送广播祝福。")
+                        continue
+
+                    client = platform.get_client()
+                    if not client:
+                        self.logger.error("无法获取 aiocqhttp 客户端实例，无法发送广播祝福。")
+                        continue
+                    
+                    friend_list = await client.api.call_action("get_friend_list")
+                    group_list = await client.api.call_action("get_group_list")
+
                     sent_count = 0
-                    # 发送到用户
-                    for user_id in self.user_limits:
+                    # 发送到好友
+                    for friend in friend_list:
+                        user_id = friend.get('user_id')
+                        if not user_id: continue
                         session_str = f"aiocqhttp:FRIEND_MESSAGE:{user_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
                             self.logger.info(f"祝福消息已发送到用户 {user_id}")
+                            await asyncio.sleep(5) # 减慢发送速度
                         except Exception as e:
                             self.logger.error(f"发送祝福到用户 {user_id} 失败: {e}")
                     
                     # 发送到群组
-                    for group_id in self.group_limits:
+                    for group in group_list:
+                        group_id = group.get('group_id')
+                        if not group_id: continue
                         session_str = f"aiocqhttp:GROUP_MESSAGE:{group_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
                             self.logger.info(f"祝福消息已发送到群组 {group_id}")
+                            await asyncio.sleep(5) # 减慢发送速度
                         except Exception as e:
                             self.logger.error(f"发送祝福到群组 {group_id} 失败: {e}")
 
                     if sent_count > 0:
                         self.logger.info(f"今日({holiday_name})祝福已成功发送到 {sent_count} 个会话。")
                     else:
-                        self.logger.warning("未配置目标会话或所有会话发送失败，今日祝福未发送。")
+                        self.logger.warning("未能获取到任何好友或群组，今日祝福未发送。")
                 
                 # 在每年年底预加载下一年的数据
                 if today.month == 12 and today.day == 31:

@@ -33,8 +33,6 @@ The plugin features powerful image generation capabilities, dynamically creating
 -   `model_name`: Model name used for image generation (String, default: `google/gemini-2.5-flash-image-preview:free`).
 -   `max_retry_attempts`: Maximum number of retry attempts per API key (Integer, default: `3`).
 -   `holidays_file`: Holiday data cache filename (String, default: `holidays.json`).
--   **`user_limits`**: **List of user QQ numbers who should receive private blessings** (List, core configuration). Add QQ numbers here for users who should receive blessings.
--   **`group_limits`**: **List of QQ group numbers that should receive group blessings** (List, core configuration). Add QQ group numbers here for groups that should receive blessings.
 -   `nap_server_address`: NAP cat server address (String, default: `localhost`). If the bot and NapCat are not on the same server, fill in the NapCat server's IP address.
 -   `nap_server_port`: NAP cat file receiving port (Integer, default: `3658`).
 -   `reference_images`: Reference image related configuration (Object).
@@ -51,7 +49,7 @@ The core functionality of the plugin is fully automatic; blessings will be sent 
 -   `/blessings reload`: Re-fetches and reloads the current year's holiday data from the network.
 -   `/blessings check`: Checks if today is the first day of a holiday and returns the result.
 -   `/blessings manual [holiday_name]`: Manually triggers the blessing generation and sending process once. If `holiday_name` is provided, it uses that name; otherwise, it uses the day's holiday name. This command sends the blessing to the **current session** and is mainly used for testing.
--   `/blessings test`: Sends a test message to all targets listed in the `user_limits` and `group_limits` configuration, used to verify if the configuration is correct.
+-   `/blessings test`: Send holiday greetings to all groups/users for testing purposes.
 
 ## 🛠️ Technical Implementation
 
@@ -59,6 +57,11 @@ The core functionality of the plugin is fully automatic; blessings will be sent 
 -   **Blessing Message Generation**: Prioritizes using the LLM provider configured in AstrBot to generate blessing messages. Falls back to built-in template messages if generation fails.
 -   **Image Generation**: Makes asynchronous requests via `aiohttp` to the OpenRouter API, calling the specified model to generate images. Supports multi-key rotation and exponential backoff retry mechanisms to improve success rates.
 -   **File Handling**: Generated images are saved in the `data/SendBlessings/images` directory, and expired files are automatically cleaned up. If NAP service is configured, images are sent to the protocol client server for processing.
+
+## 🗺️ Future Plans
+- [ ] Custom whitelist for groups/friends to send messages to
+- [ ] Support for more holidays (e.g., Western holidays)
+- [ ] Support for more image generation models
 
 ## 📦 Third-Party Libraries Used
 - The powerful and flexible bot platform provided by [AstrBot](https://github.com/AstrBotDevs/AstrBot)

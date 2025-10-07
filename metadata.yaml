@@ -1,5 +1,5 @@
 name: SendBlessings # 这是你的插件的唯一识别名。
 desc: 在节假日自动送上祝福并配图 # 插件简短描述
-version: v1.0.4 # 插件版本号。格式：v1.1.1 或者 v1.1
+version: 1.0.5 # 插件版本号。格式：v1.1.1 或者 v1.1
 author: Cheng-MaoMao # 作者
 repo: https://github.com/Cheng-MaoMao/astrbot_plugin_SendBlessings # 插件的仓库地址

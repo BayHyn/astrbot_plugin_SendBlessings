@@ -33,8 +33,6 @@
 -   `model_name`: 用于生成图片的模型名称 (字符串, 默认: `google/gemini-2.5-flash-image-preview:free`)。
 -   `max_retry_attempts`: 每个API密钥的最大重试次数 (整数, 默认: `3`)。
 -   `holidays_file`: 节假日数据缓存文件名 (字符串, 默认: `holidays.json`)。
--   **`user_limits`**: **需要发送私聊祝福的用户QQ号列表** (列表, 核心配置)。在此处添加需要接收祝福的QQ号。
--   **`group_limits`**: **需要发送群聊祝福的QQ群号列表** (列表, 核心配置)。在此处添加需要接收祝福的QQ群号。
 -   `nap_server_address`: NAP cat 服务地址 (字符串, 默认: `localhost`)。如果机器人和NapCat不在同一台服务器，请填写NapCat服务器的IP地址。
 -   `nap_server_port`: NAP cat 文件接收端口 (整数, 默认: `3658`)。
 -   `reference_images`: 参考图相关配置 (对象)。
@@ -51,7 +49,7 @@
 -   `/blessings reload`: 重新从网络获取并加载当前年份的节假日数据。
 -   `/blessings check`: 检查今天是否是节假日的第一天，并返回检查结果。
 -   `/blessings manual [holiday_name]`: 手动触发一次祝福生成和发送流程。如果提供了 `holiday_name`，则使用该名称，否则使用当天的节日名称。该命令会将祝福发送到**当前会话**，主要用于测试。
--   `/blessings test`: 向配置文件中 `user_limits` 和 `group_limits` 列表里的所有目标发送一条测试消息，用于验证配置是否正确。
+-   `/blessings test`: 向所有群组/用户发送节日祝福，用于测试。
 
 ## 🛠️ 技术实现
 
@@ -59,6 +57,11 @@
 -   **祝福语生成**: 优先尝试使用 AstrBot 中配置的LLM提供商生成祝福语，如果失败则回退到内置的模板祝福语。
 -   **图片生成**: 通过 `aiohttp` 异步请求 OpenRouter API，调用指定的模型生成图片。支持多密钥轮换和指数退避重试机制，以提高成功率。
 -   **文件处理**: 生成的图片保存在 `data/SendBlessings/images` 目录下，并会自动清理过期文件。如果配置了NAP服务，则会将图片发送到协议端服务器再进行处理。
+
+## 🗺️ 未来规划
+- [ ] 自定义发送的群组/好友的白名单
+- [ ] 支持更多节日（如西方节日）
+- [ ] 支持更多图片生成模型
 
 ## 📦 使用的第三方库
 - [AstrBot](https://github.com/AstrBotDevs/AstrBot) 提供的强大、灵活的机器人平台

@@ -38,18 +38,6 @@
         "type": "string",
         "default": "holidays.json"
     },
-    "user_limits": {
-        "description": "需要发送私聊祝福的用户QQ号列表 (仅支持aiocqhttp)",
-        "type": "list",
-        "hint": "在此处添加需要自动发送祝福的用户QQ号。",
-        "default": []
-    },
-    "group_limits": {
-        "description": "需要发送群聊祝福的QQ群号列表 (仅支持aiocqhttp)",
-        "type": "list",
-        "hint": "在此处添加需要自动发送祝福的QQ群号。",
-        "default": []
-    },
     "nap_server_address": {
         "description": "（可选）NAP cat 服务地址，用于跨服务器传输文件",
         "type": "string",
