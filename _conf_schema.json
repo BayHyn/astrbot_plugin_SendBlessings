@@ -88,7 +88,7 @@
             "image_paths": {
                 "description": "参考图文件路径列表（相对于插件目录）",
                 "type": "list",
-                "default": []
+                "default": [./Reference diagram/xxxx.png]
             },
             "max_images": {
                 "description": "最多使用的参考图数量",

@@ -171,7 +171,7 @@ def check_single_date(date_input, holidays):
     logger.info(f"{date_input} 未找到记录")
 
 
-@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.0.1")
+@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.0.2")
 class SendBlessingsPlugin(Star):
     def __init__(self, context: Context, config):
         super().__init__(context)
@@ -431,14 +431,25 @@ class SendBlessingsPlugin(Star):
             return None
 
     def build_reference_prompt(self, blessing: str, holiday_name: str, has_reference: bool):
-        """构建包含参考图信息的提示词"""
-        base_prompt = f"{holiday_name} 节日祝福海报，温暖喜庆风格，包含文字：{blessing[:50]}...，节日元素如灯笼/花朵/雪花等，高质量，卡通插画风格，节日氛围浓厚，中文文字清晰可见"
+        """构建包含参考图信息的提示词，并明确禁止敏感元素"""
+        # 核心主题和风格
+        base_prompt = f"{holiday_name} festival celebration, warm and festive style, cartoon illustration. Incorporate holiday elements like lanterns, flowers, or snowflakes. High quality, rich festive atmosphere."
         
+        # 负面提示词，用于排除不希望出现的元素
+        negative_prompt = "IMPORTANT: Do NOT generate any text, words, letters, characters, flags, national emblems, or religious symbols. The image must be purely visual and contain no writing."
+
         if has_reference:
-            reference_prompt = f"请基于提供的参考图片中的人物、场景和元素，创作{base_prompt}。保持参考图中人物的特征和风格，将其融入到节日场景中，确保画面和谐统一，节日氛围浓厚。如果参考图中有人物，请保持其外观特征；如果有特定场景，请将节日元素自然融入其中。"
+            # 如果有参考图，要求模型在参考图基础上创作，并遵守排除规则
+            reference_prompt = (
+                f"Based on the provided reference image(s), create a new artwork with the following theme: '{base_prompt}'. "
+                f"Maintain the characters, scenes, and elements from the reference image, integrating them into the festive scene. "
+                f"Ensure the final image is harmonious and full of festive spirit. "
+                f"{negative_prompt}"
+            )
             return reference_prompt
         else:
-            return base_prompt
+            # 如果没有参考图，直接使用基础主题和排除规则
+            return f"{base_prompt} {negative_prompt}"
 
     async def terminate(self):
         """插件销毁：清理资源"""
