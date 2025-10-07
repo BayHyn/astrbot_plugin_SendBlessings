@@ -1,89 +1,100 @@
 {
-  "enabled": {
-    "description": "启用节假日祝福插件",
-    "type": "bool",
-    "default": false
-  },
-  "openrouter_api_keys": {
-    "description": "OpenRouter API 密钥列表（支持多个密钥自动轮换）",
-    "type": "list",
-    "hint": "请前往 https://openrouter.ai/ 注册账号，并获取多个 OpenRouter API Key。支持多个密钥自动轮换，当一个密钥额度耗尽时会自动切换到下一个",
-    "default": [
-      "your_openrouter_api_key_here"
-    ],
-    "obvious_hint": true
-  },
-  "model_name": {
-    "description": "使用的图像生成模型名称",
-    "type": "string",
-    "hint": "OpenRouter 支持的图像生成模型，例如：google/gemini-2.5-flash-image-preview:free（默认免费模型）",
-    "default": "google/gemini-2.5-flash-image-preview:free",
-    "obvious_hint": true
-  },
-  "max_retry_attempts": {
-    "description": "每个API密钥的最大重试次数",
-    "type": "int",
-    "hint": "当API请求失败时，每个密钥最多重试几次。推荐2-5次",
-    "default": 3,
-    "obvious_hint": true
-  },
-  "custom_api_base": {
-    "description": "自定义 API Base URL（可选）",
-    "type": "string",
-    "hint": "自定义的 API 基础地址，如果不填写则使用默认的 OpenRouter API 地址",
-    "default": "",
-    "obvious_hint": false
-  },
-  "nap_server_address": {
-    "description": "NAP cat 服务地址",
-    "type": "string",
-    "hint": "若与服务器在同一服务器上请填写 localhost",
-    "default": "localhost"
-  },
-  "nap_server_port": {
-    "description": "NAP cat 服务端口",
-    "type": "int",
-    "hint": "文件传输端口",
-    "default": 3658
-  },
-  "holidays_file": {
-    "description": "节假日数据文件路径",
-    "type": "string",
-    "hint": "默认：holidays.json",
-    "default": "holidays.json"
-  },
-  "target_sessions": {
-    "description": "目标会话列表（自动发送祝福的群组或私聊）",
-    "type": "list",
-    "hint": "格式示例：['aiocqhttp:GROUP:123456789', 'aiocqhttp:PRIVATE:987654321']。留空则不自动发送，仅支持手动命令。",
-    "default": [],
-    "obvious_hint": true
-  },
-  "reference_images": {
-    "description": "参考图功能配置",
-    "type": "object",
-    "items": {
-      "enabled": {
-        "description": "启用参考图功能",
+    "enabled": {
+        "description": "是否启用插件",
         "type": "bool",
-        "hint": "开启后可使用参考图片生成个性化节日祝福",
-        "default": false,
-        "obvious_hint": true
-      },
-      "image_paths": {
-        "description": "参考图片路径列表",
+        "default": true
+    },
+    "openrouter_api_keys": {
+        "description": "OpenRouter API 密钥列表",
         "type": "list",
-        "hint": "支持多张图片，相对于插件目录的路径。格式：PNG/JPG/JPEG/GIF。示例：['images/ref1.jpg', 'images/ref2.png']",
-        "default": [],
+        "hint": "请前往 https://openrouter.ai/ 注册账号，并获取多个 OpenRouter API Key。支持多个密钥自动轮换，当一个密钥额度耗尽时会自动切换到下一个",
+        "default": [
+            "sk-or-v1-abc-123"
+        ],
         "obvious_hint": true
-      },
-      "max_images": {
-        "description": "最大参考图片数量",
-        "type": "int",
-        "hint": "限制同时使用的参考图片数量，避免API调用过大",
-        "default": 3,
+    },
+    "custom_api_base": {
+        "description": "自定义 API Base URL（可选）",
+        "type": "string",
+        "hint": "自定义的 API 基础地址，如果不填写则使用默认的 OpenRouter API 地址。例如：https://api.openrouter.ai",
+        "default": "",
         "obvious_hint": false
-      }
+    },
+    "model_name": {
+        "description": "使用的模型名称",
+        "type": "string",
+        "hint": "OpenRouter 支持的图像生成模型，例如：google/gemini-2.5-flash-image-preview:free",
+        "default": "google/gemini-2.5-flash-image-preview:free",
+        "obvious_hint": true
+    },
+    "max_retry_attempts": {
+        "description": "每个API密钥的最大重试次数",
+        "type": "int",
+        "hint": "当API请求失败时，每个密钥最多重试几次。推荐2-5次。",
+        "default": 3
+    },
+    "holidays_file": {
+        "description": "节假日数据文件名",
+        "type": "string",
+        "default": "holidays.json"
+    },
+    "target_sessions": {
+        "description": "需要发送祝福的目标会话列表",
+        "type": "list",
+        "hint": "配置需要自动发送祝福的群聊或私聊。请填写平台、类型和ID。",
+        "default": [],
+        "items": {
+            "type": "object",
+            "items": {
+                "platform": {
+                    "description": "平台名称",
+                    "type": "string",
+                    "default": "aiocqhttp",
+                    "options": ["aiocqhttp", "telegram", "qq_official", "feishu", "wechat", "dingtalk"]
+                },
+                "type": {
+                    "description": "会话类型",
+                    "type": "string",
+                    "default": "group",
+                    "options": ["group", "private"]
+                },
+                "id": {
+                    "description": "群号或QQ号",
+                    "type": "string",
+                    "default": ""
+                }
+            }
+        }
+    },
+    "nap_server_address": {
+        "description": "（可选）NAP cat 服务地址，用于跨服务器传输文件",
+        "type": "string",
+        "default": "localhost"
+    },
+    "nap_server_port": {
+        "description": "（可选）NAP cat 文件接收端口",
+        "type": "int",
+        "default": 3658
+    },
+    "reference_images": {
+        "description": "参考图生成配置",
+        "type": "object",
+        "items": {
+            "enabled": {
+                "description": "是否启用参考图功能",
+                "type": "bool",
+                "default": false
+            },
+            "image_paths": {
+                "description": "参考图文件路径列表（相对于插件目录）",
+                "type": "list",
+                "default": []
+            },
+            "max_images": {
+                "description": "最多使用的参考图数量",
+                "type": "int",
+                "default": 3
+            }
+        }
     }
-  }
 }

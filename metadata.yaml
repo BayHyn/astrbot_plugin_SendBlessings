@@ -1,8 +1,5 @@
-name: SendBlessings
-version: "1.0.0"
-author: Cheng-MaoMao
-description: 在节假日自动送上祝福的AstrBot插件。支持年度节假日获取、LLM生成祝福语、图片生成，并提供可视化配置界面。
-main: main.py
-config_schema: _conf_schema.json
-license: MIT
-repo: https://github.com/Cheng-MaoMao/astrbot_plugin_SendBlessings
+name: SendBlessings # 这是你的插件的唯一识别名。
+desc: 在节假日自动送上祝福并配图 # 插件简短描述
+version: v1.0.1 # 插件版本号。格式：v1.1.1 或者 v1.1
+author: Cheng-MaoMao # 作者
+repo: https://github.com/Cheng-MaoMao/astrbot_plugin_SendBlessings # 插件的仓库地址
