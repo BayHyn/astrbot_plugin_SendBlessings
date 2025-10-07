@@ -401,7 +401,7 @@ class SendBlessingsPlugin(Star):
             for friend in friend_list:
                 user_id = friend.get('user_id')
                 if not user_id: continue
-                session_str = f"aiocqhttp:friend:{user_id}"
+                session_str = f"aiocqhttp:friend_message:{user_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
@@ -415,7 +415,7 @@ class SendBlessingsPlugin(Star):
             for group in group_list:
                 group_id = group.get('group_id')
                 if not group_id: continue
-                session_str = f"aiocqhttp:group:{group_id}"
+                session_str = f"aiocqhttp:group_message:{group_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
@@ -601,7 +601,7 @@ class SendBlessingsPlugin(Star):
                     for friend in friend_list:
                         user_id = friend.get('user_id')
                         if not user_id: continue
-                        session_str = f"aiocqhttp:friend:{user_id}"
+                        session_str = f"aiocqhttp:friend_message:{user_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
@@ -614,7 +614,7 @@ class SendBlessingsPlugin(Star):
                     for group in group_list:
                         group_id = group.get('group_id')
                         if not group_id: continue
-                        session_str = f"aiocqhttp:group:{group_id}"
+                        session_str = f"aiocqhttp:group_message:{group_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
