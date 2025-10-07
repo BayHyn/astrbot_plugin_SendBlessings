@@ -71,7 +71,7 @@ def get_year_holidays(year, json_file=None):
             holiday_info['holiday_name'] = translated_name
             
             # 连续假期检测：如果前一天不是假期或不同假期，则为第一天
-            if current_date == start_date or not holidays[-1]['is_holiday'] or holidays[-1]['holiday_name'] != translated_name:
+            if current_date == start_date or len(holidays) == 0 or not holidays[-1]['is_holiday'] or holidays[-1]['holiday_name'] != translated_name:
                 holiday_info['is_first_day'] = True
             
             # 输出逻辑：类似原代码，连续假期优化显示

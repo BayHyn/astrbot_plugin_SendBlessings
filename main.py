@@ -6,7 +6,7 @@ import asyncio
 import aiohttp
 import json
 import os
-import datetime  # 完整导入 datetime 模块
+import datetime
 from chinese_calendar import is_holiday, is_workday
 import chinese_calendar as calendar
 from cn_bing_translator import Translator
@@ -633,7 +633,7 @@ def get_year_holidays(year, json_file=None):
 
 def get_current_year_holidays(json_file=None):
     """获取当前年份节假日"""
-    current_year = datetime.date.today().year
+    current_year = datetime.datetime.now().year
     saved_year, saved_holidays = load_holidays_from_json(json_file)
 
     if saved_year == current_year and saved_holidays:
@@ -708,7 +708,7 @@ class SendBlessingsPlugin(Star):
         
         # 加载或获取当前年节假日
         self.holidays = get_current_year_holidays(self.json_file)
-        print_holidays_summary(self.holidays, datetime.date.today().year)
+        print_holidays_summary(self.holidays, datetime.datetime.now().year)
         
         # 启动每日祝福检查任务
         asyncio.create_task(self.daily_blessing_checker())
@@ -723,7 +723,7 @@ class SendBlessingsPlugin(Star):
     @filter.command("blessings check")
     async def check_today(self, event: AstrMessageEvent):
         """检查今天是否为节假日第一天"""
-        today = datetime.date.today()
+        today = datetime.datetime.now().date()
         today_info = None
         for h in self.holidays:
             if h['date'] == today.isoformat():
@@ -746,7 +746,7 @@ class SendBlessingsPlugin(Star):
             yield event.plain_result("仅管理员可使用。")
             return
         
-        today = datetime.date.today()
+        today = datetime.datetime.now().date()
         today_info = next((h for h in self.holidays if h['date'] == today.isoformat()), None)
         if not today_info or not today_info['is_holiday']:
             yield event.plain_result("今天不是假期，无法手动生成。")
@@ -784,7 +784,7 @@ class SendBlessingsPlugin(Star):
         while True:
             try:
                 await asyncio.sleep(3600 * 24)  # 每天检查一次（可调整为更精确的时间）
-                today = datetime.date.today()
+                today = datetime.datetime.now().date()
                 today_info = next((h for h in self.holidays if h['date'] == today.isoformat()), None)
                 
                 if today_info and today_info['is_first_day'] and today_info['is_holiday'] and self.config.get('enabled', True):
