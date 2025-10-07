@@ -4,6 +4,7 @@ from astrbot.api import logger
 import astrbot.api.message_components as Comp
 import asyncio
 import aiohttp
+import aiofiles
 import json
 import os
 import base64
