@@ -217,7 +217,7 @@ def check_single_date(date_input: date, holidays: list):
     logger.info(f"查询结果: 在 {date_input.year} 年的记录中未找到 {date_input}。")
 
 
-@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.0.3")
+@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.0.4")
 class SendBlessingsPlugin(Star):
     """
     自动发送节假日祝福插件。
@@ -390,7 +390,7 @@ class SendBlessingsPlugin(Star):
             
             # 发送到目标用户
             for user_id in self.user_limits:
-                session_str = f"aiocqhttp:FRIEND:{user_id}"
+                session_str = f"aiocqhttp:friend_message:{user_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
@@ -401,7 +401,7 @@ class SendBlessingsPlugin(Star):
 
             # 发送到目标群组
             for group_id in self.group_limits:
-                session_str = f"aiocqhttp:GROUP:{group_id}"
+                session_str = f"aiocqhttp:group_message:{group_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
@@ -574,7 +574,7 @@ class SendBlessingsPlugin(Star):
                     sent_count = 0
                     # 发送到用户
                     for user_id in self.user_limits:
-                        session_str = f"aiocqhttp:FRIEND:{user_id}"
+                        session_str = f"aiocqhttp:friend_message:{user_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
@@ -584,7 +584,7 @@ class SendBlessingsPlugin(Star):
                     
                     # 发送到群组
                     for group_id in self.group_limits:
-                        session_str = f"aiocqhttp:GROUP:{group_id}"
+                        session_str = f"aiocqhttp:group_message:{group_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
