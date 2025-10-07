@@ -2,7 +2,6 @@ from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 import astrbot.api.message_components as Comp
-from astrbot.api.platform import MessageType
 import asyncio
 import aiohttp
 import aiofiles
@@ -255,11 +254,6 @@ class SendBlessingsPlugin(Star):
         self.reference_image_paths = self.reference_images_config.get("image_paths", [])
         self.max_reference_images = self.reference_images_config.get("max_images", 3)
         
-        # 加载白名单配置
-        self.target_sessions_config = config.get("target_sessions", {})
-        self.target_user_ids = [str(uid) for uid in self.target_sessions_config.get("user_ids", [])]
-        self.target_group_ids = [str(gid) for gid in self.target_sessions_config.get("group_ids", [])]
-        
         self.holidays = []
         self.logger = logger
         
@@ -380,15 +374,11 @@ class SendBlessingsPlugin(Star):
                 return
 
             # 获取好友和群组列表
-            friend_list_raw = await client.api.call_action("get_friend_list")
-            group_list_raw = await client.api.call_action("get_group_list")
-
-            # 根据白名单过滤
-            friend_list = [f for f in friend_list_raw if not self.target_user_ids or str(f.get('user_id')) in self.target_user_ids]
-            group_list = [g for g in group_list_raw if not self.target_group_ids or str(g.get('group_id')) in self.target_group_ids]
+            friend_list = await client.api.call_action("get_friend_list")
+            group_list = await client.api.call_action("get_group_list")
 
             if not friend_list and not group_list:
-                yield event.plain_result("未能获取到任何符合白名单的好友或群组列表。")
+                yield event.plain_result("未能获取到任何好友或群组列表。")
                 return
 
             test_blessing = "🎉 这是一条广播功能测试消息。如果您收到此消息，说明插件可以正常向您发送祝福！"
@@ -411,7 +401,7 @@ class SendBlessingsPlugin(Star):
             for friend in friend_list:
                 user_id = friend.get('user_id')
                 if not user_id: continue
-                session_str = f"aiocqhttp:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                session_str = f"aiocqhttp:friend:{user_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
@@ -425,7 +415,7 @@ class SendBlessingsPlugin(Star):
             for group in group_list:
                 group_id = group.get('group_id')
                 if not group_id: continue
-                session_str = f"aiocqhttp:{MessageType.GROUP_MESSAGE.value}:{group_id}"
+                session_str = f"aiocqhttp:group:{group_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
@@ -603,19 +593,15 @@ class SendBlessingsPlugin(Star):
                         self.logger.error("无法获取 aiocqhttp 客户端实例，无法发送广播祝福。")
                         continue
                     
-                    friend_list_raw = await client.api.call_action("get_friend_list")
-                    group_list_raw = await client.api.call_action("get_group_list")
-
-                    # 根据白名单过滤
-                    friend_list = [f for f in friend_list_raw if not self.target_user_ids or str(f.get('user_id')) in self.target_user_ids]
-                    group_list = [g for g in group_list_raw if not self.target_group_ids or str(g.get('group_id')) in self.target_group_ids]
+                    friend_list = await client.api.call_action("get_friend_list")
+                    group_list = await client.api.call_action("get_group_list")
 
                     sent_count = 0
                     # 发送到好友
                     for friend in friend_list:
                         user_id = friend.get('user_id')
                         if not user_id: continue
-                        session_str = f"aiocqhttp:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                        session_str = f"aiocqhttp:friend:{user_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
@@ -628,7 +614,7 @@ class SendBlessingsPlugin(Star):
                     for group in group_list:
                         group_id = group.get('group_id')
                         if not group_id: continue
-                        session_str = f"aiocqhttp:{MessageType.GROUP_MESSAGE.value}:{group_id}"
+                        session_str = f"aiocqhttp:group:{group_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
