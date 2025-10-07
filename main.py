@@ -6,7 +6,7 @@ import asyncio
 import aiohttp
 import json
 import os
-import datetime
+from datetime import datetime, date, timedelta
 from chinese_calendar import is_holiday, is_workday
 import chinese_calendar as calendar
 from cn_bing_translator import Translator
@@ -77,8 +77,8 @@ async def cleanup_old_images(data_dir=None):
         if not images_dir.exists():
             return
 
-        current_time = datetime.datetime.now()
-        cutoff_time = current_time - datetime.timedelta(minutes=15)
+        current_time = datetime.now()
+        cutoff_time = current_time - timedelta(minutes=15)
 
         # 查找images目录下的所有图像文件
         image_patterns = ["blessing_image_*.png", "blessing_image_*.jpg", "blessing_image_*.jpeg"]
@@ -87,7 +87,7 @@ async def cleanup_old_images(data_dir=None):
             for file_path in images_dir.glob(pattern):
                 try:
                     # 获取文件的修改时间
-                    file_mtime = datetime.datetime.fromtimestamp(file_path.stat().st_mtime)
+                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
 
                     # 如果文件超过15分钟，删除它
                     if file_mtime < cutoff_time:
@@ -130,7 +130,7 @@ async def save_base64_image(base64_string, image_format="png", data_dir=None):
         image_data = base64.b64decode(base64_string)
 
         # 生成唯一文件名（使用时间戳和UUID避免冲突）
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid.uuid4())[:8]
         image_path = images_dir / f"blessing_image_{timestamp}_{unique_id}.{image_format}"
 
@@ -338,7 +338,7 @@ async def generate_image_openrouter(prompt, api_keys, model="google/gemini-2.5-f
                                                     # 先清理旧图像
                                                     await cleanup_old_images(script_dir)
                                                     
-                                                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                                                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                                                     unique_id = str(uuid.uuid4())[:8]
                                                     image_path = images_dir / f"blessing_image_{timestamp}_{unique_id}.png"
                                                     
@@ -583,8 +583,8 @@ def save_holidays_to_json(year, holidays, json_file):
 
 def get_year_holidays(year, json_file=None):
     """获取指定年份的节假日信息"""
-    start_date = datetime.date(year, 1, 1)
-    end_date = datetime.date(year, 12, 31)
+    start_date = date(year, 1, 1)
+    end_date = date(year, 12, 31)
     holidays = []
     current_date = start_date
     prev_holiday_name = None
@@ -626,14 +626,14 @@ def get_year_holidays(year, json_file=None):
         
         holidays.append(holiday_info)
         
-        current_date += datetime.timedelta(days=1)
+        current_date += timedelta(days=1)
     
     return holidays
 
 
 def get_current_year_holidays(json_file=None):
     """获取当前年份节假日"""
-    current_year = datetime.datetime.now().year
+    current_year = datetime.now().year
     saved_year, saved_holidays = load_holidays_from_json(json_file)
 
     if saved_year == current_year and saved_holidays:
@@ -708,7 +708,7 @@ class SendBlessingsPlugin(Star):
         
         # 加载或获取当前年节假日
         self.holidays = get_current_year_holidays(self.json_file)
-        print_holidays_summary(self.holidays, datetime.datetime.now().year)
+        print_holidays_summary(self.holidays, datetime.now().year)
         
         # 启动每日祝福检查任务
         asyncio.create_task(self.daily_blessing_checker())
@@ -723,7 +723,7 @@ class SendBlessingsPlugin(Star):
     @filter.command("blessings check")
     async def check_today(self, event: AstrMessageEvent):
         """检查今天是否为节假日第一天"""
-        today = datetime.datetime.now().date()
+        today = datetime.now().date()
         today_info = None
         for h in self.holidays:
             if h['date'] == today.isoformat():
@@ -746,7 +746,7 @@ class SendBlessingsPlugin(Star):
             yield event.plain_result("仅管理员可使用。")
             return
         
-        today = datetime.datetime.now().date()
+        today = datetime.now().date()
         today_info = next((h for h in self.holidays if h['date'] == today.isoformat()), None)
         if not today_info or not today_info['is_holiday']:
             yield event.plain_result("今天不是假期，无法手动生成。")
@@ -784,7 +784,7 @@ class SendBlessingsPlugin(Star):
         while True:
             try:
                 await asyncio.sleep(3600 * 24)  # 每天检查一次（可调整为更精确的时间）
-                today = datetime.datetime.now().date()
+                today = datetime.now().date()
                 today_info = next((h for h in self.holidays if h['date'] == today.isoformat()), None)
                 
                 if today_info and today_info['is_first_day'] and today_info['is_holiday'] and self.config.get('enabled', True):
