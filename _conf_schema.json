@@ -49,7 +49,14 @@
   "holidays_file": {
     "description": "节假日数据文件路径",
     "type": "string",
-    "hint": "默认：./holidays.json",
-    "default": "./holidays.json"
+    "hint": "默认：holidays.json",
+    "default": "holidays.json"
+  },
+  "target_sessions": {
+    "description": "目标会话列表（自动发送祝福的群组或私聊）",
+    "type": "list",
+    "hint": "格式示例：['aiocqhttp:GROUP:123456789', 'aiocqhttp:PRIVATE:987654321']。留空则不自动发送，仅支持手动命令。",
+    "default": [],
+    "obvious_hint": true
   }
 }

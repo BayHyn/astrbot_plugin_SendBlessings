@@ -1,3 +1,4 @@
+
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
@@ -6,14 +7,15 @@ import asyncio
 import aiohttp
 import json
 import os
+import base64
+import binascii
 from datetime import datetime, date, timedelta
 from chinese_calendar import is_holiday, is_workday
-import chinese_calendar as calendar
+import chinese_calendar as ch_calendar
 from cn_bing_translator import Translator
 
 # 内联 utils.ttp.py 的核心逻辑（移除测试部分）
 import random
-import base64
 import re
 import uuid
 from pathlib import Path
@@ -150,7 +152,7 @@ async def save_base64_image(base64_string, image_format="png", data_dir=None):
 
         return True
 
-    except base64.binascii.Error as e:
+    except binascii.Error as e:
         logger.error(f"Base64 解码失败: {e}")
         return False
     except Exception as e:
@@ -303,10 +305,11 @@ async def generate_image_openrouter(prompt, api_keys, model="google/gemini-2.5-f
                         logger.debug(f"输入图片数量: {len(input_images) if input_images else 0}")
                         if input_images:
                             logger.debug(f"第一张图片base64长度: {len(input_images[0])}")
-                        logger.debug(f"消息内容结构: {type(payload['messages'][0]['content'])}")
-                        if isinstance(payload['messages'][0]['content'], list):
-                            content_types = [item.get('type', 'unknown') for item in payload['messages'][0]['content']]
-                            logger.debug(f"消息内容类型: {content_types}")
+                        if "messages" in payload:
+                            logger.debug(f"消息内容结构: {type(payload['messages'][0]['content'])}")
+                            if isinstance(payload['messages'][0]['content'], list):
+                                content_types = [item.get('type', 'unknown') for item in payload['messages'][0]['content']]
+                                logger.debug(f"消息内容类型: {content_types}")
 
                     timeout = aiohttp.ClientTimeout(total=60)
                     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -348,7 +351,6 @@ async def generate_image_openrouter(prompt, api_keys, model="google/gemini-2.5-f
                                                     # 获取绝对路径
                                                     abs_path = str(image_path.absolute())
                                                     file_url = f"file://{abs_path}"
-                                                    
                                                     # 更新状态
                                                     await _state.update_saved_image(file_url, str(image_path))
                                                     
@@ -406,7 +408,6 @@ async def generate_image_openrouter(prompt, api_keys, model="google/gemini-2.5-f
                                                 return await get_saved_image_info()
 
                                 logger.info("API调用成功，但未找到图像数据")
-                                # 这种情况也算成功，不需要重试
                                 return None, None
 
                             elif response.status == 429 or (response.status == 402 and "insufficient" in str(data).lower()):
@@ -437,7 +438,7 @@ async def generate_image_openrouter(prompt, api_keys, model="google/gemini-2.5-f
                         break  # 跳出重试循环，尝试下一个API密钥
         
         except Exception as e:
-            logger.error(f"处理API密钥 #{current_index} 时发生异常: {str(e)}")
+            logger.error(f"处理API密钥时发生异常: {str(e)}")
         
         # 尝试下一个API密钥
         if api_attempt < max_api_attempts - 1:
@@ -553,7 +554,8 @@ def translate_holiday_name(holiday_name):
         translator = Translator(toLang='zh-Hans')
         result = translator.process(holiday_name)
         return result if result and result != holiday_name else holiday_name
-    except:
+    except Exception as e:
+        logger.warning(f"翻译节日名称失败: {e}")
         return holiday_name
 
 
@@ -562,9 +564,13 @@ def load_holidays_from_json(json_file):
     if json_file is None:
         json_file = 'holidays.json'  # 默认
     if os.path.exists(json_file):
-        with open(json_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            return data.get('year'), data.get('holidays', [])
+        try:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get('year'), data.get('holidays', [])
+        except Exception as e:
+            logger.error(f"加载节假日数据失败: {e}")
+            return None, []
     return None, []
 
 
@@ -576,9 +582,12 @@ def save_holidays_to_json(year, holidays, json_file):
         'year': year,
         'holidays': holidays
     }
-    with open(json_file, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"节假日数据已保存到 {json_file}")
+    try:
+        with open(json_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        logger.info(f"节假日数据已保存到 {json_file}")
+    except Exception as e:
+        logger.error(f"保存节假日数据失败: {e}")
 
 
 def get_year_holidays(year, json_file=None):
@@ -589,42 +598,55 @@ def get_year_holidays(year, json_file=None):
     current_date = start_date
     prev_holiday_name = None
 
-    print(f"\n获取 {year} 年节假日信息：")
+    logger.info(f"获取 {year} 年节假日信息")
     while current_date <= end_date:
-        on_holiday, holiday_name = calendar.get_holiday_detail(current_date)
-        is_hol = is_holiday(current_date)
-        is_work = is_workday(current_date)
-        is_lieu = calendar.is_in_lieu(current_date)
-        
-        holiday_info = {
-            'date': current_date.isoformat(),
-            'holiday_name': '',
-            'is_holiday': is_hol,
-            'is_workday': is_work,
-            'is_in_lieu': is_lieu,
-            'is_first_day': False  # 新增：标记是否为假期第一天
-        }
-        
-        if on_holiday and holiday_name:
-            translated_name = translate_holiday_name(holiday_name)
-            holiday_info['holiday_name'] = translated_name
+        try:
+            on_holiday, holiday_name = ch_calendar.get_holiday_detail(current_date)
+            is_hol = is_holiday(current_date)
+            is_work = is_workday(current_date)
+            is_lieu = ch_calendar.is_in_lieu(current_date)
             
-            # 连续假期检测：如果前一天不是假期或不同假期，则为第一天
-            if current_date == start_date or len(holidays) == 0 or not holidays[-1]['is_holiday'] or holidays[-1]['holiday_name'] != translated_name:
-                holiday_info['is_first_day'] = True
+            holiday_info = {
+                'date': current_date.isoformat(),
+                'holiday_name': '',
+                'is_holiday': is_hol,
+                'is_workday': is_work,
+                'is_in_lieu': is_lieu,
+                'is_first_day': False  # 新增：标记是否为假期第一天
+            }
             
-            # 输出逻辑：类似原代码，连续假期优化显示
-            if translated_name != prev_holiday_name:
-                print(f"{current_date} 是节假日，{translated_name}快乐")
-                if calendar.is_in_lieu(current_date):
-                    print(f"{current_date} 是调休")
-                prev_holiday_name = translated_name
-            else:
-                print(f"{current_date} 是{translated_name}假期")
-                if calendar.is_in_lieu(current_date):
-                    print(f"{current_date} 是调休")
-        
-        holidays.append(holiday_info)
+            if on_holiday and holiday_name:
+                translated_name = translate_holiday_name(holiday_name)
+                holiday_info['holiday_name'] = translated_name
+                
+                # 连续假期检测：如果前一天不是假期或不同假期，则为第一天
+                if current_date == start_date or len(holidays) == 0 or not holidays[-1]['is_holiday'] or holidays[-1]['holiday_name'] != translated_name:
+                    holiday_info['is_first_day'] = True
+                
+                # 输出逻辑：类似原代码，连续假期优化显示
+                if translated_name != prev_holiday_name:
+                    logger.info(f"{current_date} 是节假日，{translated_name}快乐")
+                    if ch_calendar.is_in_lieu(current_date):
+                        logger.info(f"{current_date} 是调休")
+                    prev_holiday_name = translated_name
+                else:
+                    logger.debug(f"{current_date} 是{translated_name}假期")
+                    if ch_calendar.is_in_lieu(current_date):
+                        logger.debug(f"{current_date} 是调休")
+            
+            holidays.append(holiday_info)
+            
+        except Exception as e:
+            logger.warning(f"处理日期 {current_date} 时出错: {e}")
+            # 添加默认记录
+            holidays.append({
+                'date': current_date.isoformat(),
+                'holiday_name': '',
+                'is_holiday': False,
+                'is_workday': True,
+                'is_in_lieu': False,
+                'is_first_day': False
+            })
         
         current_date += timedelta(days=1)
     
@@ -637,10 +659,10 @@ def get_current_year_holidays(json_file=None):
     saved_year, saved_holidays = load_holidays_from_json(json_file)
 
     if saved_year == current_year and saved_holidays:
-        print(f"已加载 {current_year} 年节假日数据，共 {len(saved_holidays)} 条记录。")
+        logger.info(f"已加载 {current_year} 年节假日数据，共 {len(saved_holidays)} 条记录。")
         return saved_holidays
     else:
-        print(f"未找到 {current_year} 年数据或需更新，正在重新获取...")
+        logger.info(f"未找到 {current_year} 年数据或需更新，正在重新获取...")
         holidays = get_year_holidays(current_year, json_file)
         save_holidays_to_json(current_year, holidays, json_file)
         return holidays
@@ -648,17 +670,17 @@ def get_current_year_holidays(json_file=None):
 
 def print_holidays_summary(holidays, year):
     """输出节假日摘要"""
-    print(f"\n{year} 年节假日摘要：")
+    logger.info(f"{year} 年节假日摘要：")
     total_days = len(holidays)
     holiday_count = sum(1 for h in holidays if h['is_holiday'])
     workday_count = sum(1 for h in holidays if h['is_workday'])
     lieu_count = sum(1 for h in holidays if h['is_in_lieu'])
     first_day_count = sum(1 for h in holidays if h['is_first_day'])
-    print(f"总天数：{total_days}")
-    print(f"总节假日数：{holiday_count}")
-    print(f"总工作日数：{workday_count}")
-    print(f"调休日数：{lieu_count}")
-    print(f"假期第一天数：{first_day_count}")
+    logger.info(f"总天数：{total_days}")
+    logger.info(f"总节假日数：{holiday_count}")
+    logger.info(f"总工作日数：{workday_count}")
+    logger.info(f"调休日数：{lieu_count}")
+    logger.info(f"假期第一天数：{first_day_count}")
 
 
 def check_single_date(date_input, holidays):
@@ -666,13 +688,13 @@ def check_single_date(date_input, holidays):
     for h in holidays:
         if h['date'] == date_input.isoformat():
             if h['is_holiday']:
-                print(f"{date_input} 是假期，{h['holiday_name']}")
+                logger.info(f"{date_input} 是假期，{h['holiday_name']}")
             else:
-                print(f"{date_input} 是工作日")
+                logger.info(f"{date_input} 是工作日")
             if h['is_in_lieu']:
-                print(f"{date_input} 是调休")
+                logger.info(f"{date_input} 是调休")
             return
-    print(f"{date_input} 未找到记录")
+    logger.info(f"{date_input} 未找到记录")
 
 
 @register("SendBlessings", "Cheng-MaoMao", "在节假日送上祝福的插件", "1.0.0")
@@ -680,7 +702,12 @@ class SendBlessingsPlugin(Star):
     def __init__(self, context: Context, config):
         super().__init__(context)
         self.config = config
-        self.json_file = os.path.join(self.context.get_config().get('data_dir', 'data'), self.config.get('holidays_file', 'holidays.json'))
+        
+        # 确保data目录存在
+        data_dir = self.context.get_config().get('data_dir', 'data')
+        os.makedirs(data_dir, exist_ok=True)
+        
+        self.json_file = os.path.join(data_dir, self.config.get('holidays_file', 'holidays.json'))
         
         # 加载 OpenRouter 配置
         self.openrouter_api_keys = config.get("openrouter_api_keys", [])
@@ -693,51 +720,61 @@ class SendBlessingsPlugin(Star):
         self.nap_server_port = config.get("nap_server_port", 3658)
         
         self.holidays = []
-        self.target_sessions = []  # 用户需在此设置目标会话列表，如 ['aiocqhttp:GROUP:123456']
+        self.target_sessions = config.get("target_sessions", [])  # 从配置中读取目标会话列表
         self.logger = logger
+        
+        # 启动初始化任务
+        asyncio.create_task(self.initialize())
 
     async def initialize(self):
         """插件初始化：加载节假日数据并启动每日检查任务"""
-        if not self.config.get('enabled', True):
-            self.logger.info("插件未启用，跳过初始化")
-            return
-        
-        # 确保data目录存在
-        data_dir = self.context.get_config().get('data_dir', 'data')
-        os.makedirs(data_dir, exist_ok=True)
-        
-        # 加载或获取当前年节假日
-        self.holidays = get_current_year_holidays(self.json_file)
-        print_holidays_summary(self.holidays, datetime.now().year)
-        
-        # 启动每日祝福检查任务
-        asyncio.create_task(self.daily_blessing_checker())
-        self.logger.info("节假日祝福插件初始化完成")
+        try:
+            if not self.config.get('enabled', True):
+                self.logger.info("插件未启用，跳过初始化")
+                return
+            
+            # 加载或获取当前年节假日
+            self.holidays = get_current_year_holidays(self.json_file)
+            print_holidays_summary(self.holidays, datetime.now().year)
+            
+            # 启动每日祝福检查任务
+            asyncio.create_task(self.daily_blessing_checker())
+            self.logger.info("节假日祝福插件初始化完成")
+        except Exception as e:
+            self.logger.error(f"插件初始化失败: {e}")
 
     @filter.command("blessings reload")
     async def reload_holidays(self, event: AstrMessageEvent):
         """重新加载节假日数据"""
-        self.holidays = get_current_year_holidays(self.json_file)
-        yield event.plain_result(f"节假日数据已重新加载，共 {len(self.holidays)} 条记录。")
+        try:
+            self.holidays = get_current_year_holidays(self.json_file)
+            yield event.plain_result(f"节假日数据已重新加载，共 {len(self.holidays)} 条记录。")
+        except Exception as e:
+            self.logger.error(f"重新加载节假日数据失败: {e}")
+            yield event.plain_result(f"重新加载失败: {str(e)}")
     
     @filter.command("blessings check")
     async def check_today(self, event: AstrMessageEvent):
         """检查今天是否为节假日第一天"""
-        today = datetime.now().date()
-        today_info = None
-        for h in self.holidays:
-            if h['date'] == today.isoformat():
-                today_info = h
-                break
-        if today_info:
-            if today_info['is_first_day'] and today_info['is_holiday']:
-                yield event.plain_result(f"今天是 {today_info['holiday_name']} 的第一天！")
-            elif today_info['is_holiday']:
-                yield event.plain_result(f"今天是假期，但不是第一天：{today_info['holiday_name']}")
+        try:
+            today = datetime.now().date()
+            today_info = None
+            for h in self.holidays:
+                if h['date'] == today.isoformat():
+                    today_info = h
+                    break
+            if today_info:
+                if today_info['is_first_day'] and today_info['is_holiday']:
+                    yield event.plain_result(f"今天是 {today_info['holiday_name']} 的第一天！")
+                elif today_info['is_holiday']:
+                    yield event.plain_result(f"今天是假期，但不是第一天：{today_info['holiday_name']}")
+                else:
+                    yield event.plain_result("今天不是假期。")
             else:
-                yield event.plain_result("今天不是假期。")
-        else:
-            yield event.plain_result("未找到今天记录，请重新加载数据。")
+                yield event.plain_result("未找到今天记录，请重新加载数据。")
+        except Exception as e:
+            self.logger.error(f"检查今天节假日状态失败: {e}")
+            yield event.plain_result(f"检查失败: {str(e)}")
     
     @filter.command("blessings manual")
     async def manual_bless(self, event: AstrMessageEvent, holiday_name: str = None):
@@ -746,34 +783,38 @@ class SendBlessingsPlugin(Star):
             yield event.plain_result("仅管理员可使用。")
             return
         
-        today = datetime.now().date()
-        today_info = next((h for h in self.holidays if h['date'] == today.isoformat()), None)
-        if not today_info or not today_info['is_holiday']:
-            yield event.plain_result("今天不是假期，无法手动生成。")
-            return
-        
-        if holiday_name is None:
-            holiday_name = today_info['holiday_name']
-        
-        # 生成祝福
-        blessing = await self.generate_blessing(holiday_name)
-        if not blessing:
-            yield event.plain_result("祝福语生成失败。")
-            return
-        
-        # 生成图片
-        image_url = await self.generate_image(blessing, holiday_name)
-        if not image_url:
-            yield event.plain_result("图片生成失败。")
-            return
-        
-        # 发送到当前会话
-        chain = [
-            Comp.Plain(blessing),
-            Comp.Image.fromURL(image_url)
-        ]
-        yield event.chain_result(chain)
-        yield event.plain_result("手动祝福已发送！")
+        try:
+            today = datetime.now().date()
+            today_info = next((h for h in self.holidays if h['date'] == today.isoformat()), None)
+            if not today_info or not today_info['is_holiday']:
+                yield event.plain_result("今天不是假期，无法手动生成。")
+                return
+            
+            if holiday_name is None:
+                holiday_name = today_info['holiday_name']
+            
+            # 生成祝福
+            blessing = await self.generate_blessing(holiday_name)
+            if not blessing:
+                yield event.plain_result("祝福语生成失败。")
+                return
+            
+            # 生成图片
+            image_url, image_path = await self.generate_image(blessing, holiday_name)
+            if not image_url:
+                yield event.plain_result("图片生成失败。")
+                return
+            
+            # 发送到当前会话
+            chain = [
+                Comp.Plain(blessing),
+                Comp.Image.fromFileSystem(image_path) if image_path else Comp.Plain("图片生成失败")
+            ]
+            yield event.chain_result(chain)
+            yield event.plain_result("手动祝福已发送！")
+        except Exception as e:
+            self.logger.error(f"手动祝福失败: {e}")
+            yield event.plain_result(f"手动祝福失败: {str(e)}")
 
     async def terminate(self):
         """插件销毁：清理资源"""
@@ -798,7 +839,7 @@ class SendBlessingsPlugin(Star):
                         continue
                     
                     # 生成图片
-                    image_url = await self.generate_image(blessing, holiday_name)
+                    image_url, image_path = await self.generate_image(blessing, holiday_name)
                     if not image_url:
                         self.logger.error("图片生成失败，跳过发送")
                         continue
@@ -806,13 +847,14 @@ class SendBlessingsPlugin(Star):
                     # 构建消息链
                     chain = [
                         Comp.Plain(blessing),
-                        Comp.Image.fromURL(image_url)
+                        Comp.Image.fromFileSystem(image_path) if image_path else Comp.Plain("图片生成失败")
                     ]
                     
                     # 发送到目标会话
                     sent_count = 0
                     for session in self.target_sessions:
                         try:
+                            # 直接发送消息链，不需要包装在MessageChain中
                             await self.context.send_message(session, chain)
                             sent_count += 1
                             self.logger.info(f"祝福消息已发送到 {session}")
@@ -822,7 +864,7 @@ class SendBlessingsPlugin(Star):
                     if sent_count > 0:
                         self.logger.info(f"今日祝福已发送到 {sent_count} 个会话")
                     else:
-                        self.logger.warning("无目标会话，祝福未发送")
+                        self.logger.warning("无目标会话或发送失败，祝福未发送")
                 
                 # 每年检查是否需要更新节假日数据（例如12月31日）
                 if today.month == 12 and today.day == 31:
@@ -838,70 +880,55 @@ class SendBlessingsPlugin(Star):
     async def generate_blessing(self, holiday_name: str) -> str:
         """生成节日祝福语"""
         try:
-            # 使用websearch查询习俗和祝福语
-            customs = await self.query_holiday_customs(holiday_name)
-            if not customs:
-                customs = f"{holiday_name}传统节日"
+            # 使用简单的祝福语模板，避免依赖外部API
+            blessing_templates = {
+                "春节": "新春快乐！祝您在新的一年里身体健康，工作顺利，阖家幸福！",
+                "元旦": "元旦快乐！新年新气象，祝您在新的一年里万事如意，心想事成！",
+                "中秋节": "中秋节快乐！月圆人团圆，祝您和家人团团圆圆，幸福美满！",
+                "国庆节": "国庆节快乐！祝愿祖国繁荣昌盛，祝您节日愉快，身体健康！",
+                "劳动节": "劳动节快乐！向所有辛勤工作的人们致敬，祝您节日愉快！",
+                "端午节": "端午节快乐！粽子香，艾叶长，祝您身体健康，平安吉祥！",
+                "清明节": "清明时节，缅怀先人，珍惜当下，祝您身体健康，工作顺利！",
+                "元宵节": "元宵节快乐！花好月圆人团圆，祝您家庭幸福，事业有成！"
+            }
             
-            # 调用AstrBot内置LLM
-            provider = self.context.get_using_provider()
-            if not provider:
-                self.logger.error("未找到LLM提供商")
-                return None
+            # 尝试使用LLM生成个性化祝福语
+            try:
+                provider = self.context.get_using_provider()
+                if provider:
+                    prompt = f"请为{holiday_name}生成一段温暖、简短的中文祝福语（50-100字），要体现节日特色和美好祝愿。"
+                    
+                    resp = await provider.text_chat(
+                        prompt=prompt,
+                        system_prompt="你是一个专业的节日祝福生成器，输出仅为祝福语文本，不要添加额外解释。"
+                    )
+                    
+                    if resp and resp.completion_text:
+                        blessing = resp.completion_text.strip()
+                        if blessing and len(blessing) > 10:  # 确保生成的祝福语有意义
+                            return blessing
+            except Exception as e:
+                self.logger.warning(f"LLM生成祝福语失败，使用模板: {e}")
             
-            prompt = f"你是一个温暖的AI助手。请基于以下节日信息生成一段简短、积极的中文祝福语（50-100字），适合发送给朋友或群聊。节日：{holiday_name}，习俗/背景：{customs}。祝福语要真挚、节日氛围浓厚。"
+            # 回退到模板祝福语
+            for key in blessing_templates:
+                if key in holiday_name:
+                    return blessing_templates[key]
             
-            resp = await provider.text_chat(
-                prompt=prompt,
-                system_prompt="你是一个专业的节日祝福生成器，输出仅为祝福语文本，不要添加额外解释。",
-                model="gpt-3.5-turbo"  # 使用本体默认模型
-            )
+            # 通用祝福语
+            return f"{holiday_name}快乐！祝您节日愉快，身体健康，工作顺利，阖家幸福！"
             
-            if resp and resp.completion_text:
-                return resp.completion_text.strip()
-            else:
-                self.logger.error("LLM响应为空")
-                return None
         except Exception as e:
             self.logger.error(f"生成祝福语失败: {e}")
-            return None
+            return f"{holiday_name}快乐！祝您节日愉快！"
     
-    async def query_holiday_customs(self, holiday_name: str) -> str:
-        """使用AstrBot内置websearch查询节日习俗"""
-        try:
-            # 获取websearch提供商
-            websearch = self.context.get_websearch()
-            if not websearch:
-                self.logger.error("未找到websearch提供商")
-                return f"{holiday_name}传统节日"
-            
-            # 执行搜索
-            query = f"{holiday_name} 节日习俗 传统祝福语 中国"
-            results = await websearch.search(query=query, max_results=3)
-            
-            if results:
-                customs_parts = []
-                for result in results:
-                    content = result.get('content') or result.get('snippet', '') or result.get('description', '')
-                    if content:
-                        customs_parts.append(content[:200])
-                
-                customs = ' '.join(customs_parts)
-                if not customs.strip():
-                    customs = f"{holiday_name}传统节日，涉及家庭团聚和庆祝习俗。"
-            else:
-                customs = f"{holiday_name}是中国传统节日，通常包括家庭团聚、祭祖、吃特色食物和互赠祝福，象征团圆与喜庆。"
-            
-            self.logger.info(f"websearch查询 {holiday_name} 习俗: {customs[:100]}...")
-            return customs
-            
-        except Exception as e:
-            self.logger.error(f"websearch查询失败: {e}")
-            return f"{holiday_name}传统节日"
-    
-    async def generate_image(self, blessing: str, holiday_name: str) -> str:
+    async def generate_image(self, blessing: str, holiday_name: str) -> tuple:
         """生成节日祝福图片，使用 OpenRouter API"""
         try:
+            if not self.openrouter_api_keys:
+                self.logger.warning("未配置OpenRouter API密钥，跳过图片生成")
+                return None, None
+            
             # 构建图像生成提示词
             prompt = f"{holiday_name} 节日祝福海报，温暖喜庆风格，包含文字：{blessing[:50]}...，节日元素如灯笼/花朵/雪花等，高质量，卡通插画风格，节日氛围浓厚，中文文字清晰可见"
             
@@ -916,21 +943,23 @@ class SendBlessingsPlugin(Star):
             
             if not image_url or not image_path:
                 self.logger.error("图片生成失败")
-                return None
+                return None, None
             
             # 处理 NAP 文件传输
             if self.nap_server_address and self.nap_server_address != "localhost":
                 try:
-                    image_path = await send_file(image_path, host=self.nap_server_address, port=self.nap_server_port)
-                    self.logger.info(f"NAP 传输成功: {image_path}")
+                    transferred_path = await send_file(image_path, host=self.nap_server_address, port=self.nap_server_port)
+                    if transferred_path:
+                        image_path = transferred_path
+                        self.logger.info(f"NAP 传输成功: {image_path}")
+                    else:
+                        self.logger.warning("NAP 传输失败，使用本地路径")
                 except Exception as e:
                     self.logger.warning(f"NAP 传输失败，回退本地路径: {e}")
-                    # 回退使用本地路径
-                    pass
             
             self.logger.info(f"节日图片生成成功: {image_path}")
-            return image_url
+            return image_url, image_path
             
         except Exception as e:
             self.logger.error(f"生成图片失败: {e}")
-            return None
+            return None, None
