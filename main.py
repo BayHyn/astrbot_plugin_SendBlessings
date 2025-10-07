@@ -2,7 +2,7 @@ from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 import astrbot.api.message_components as Comp
-from astrbot.api.platform import AiocqhttpAdapter
+from astrbot.core.platform.sources.aiocqhttp.adapter import AiocqhttpAdapter
 import asyncio
 import aiohttp
 import aiofiles
@@ -17,9 +17,6 @@ from cn_bing_translator import Translator
 from .utils.ttp import generate_image_openrouter
 from .utils.file_send_server import send_file
 
-# 移除重复导入
-# from .utils.ttp import generate_image_openrouter
-# from .utils.file_send_server import send_file
 
 
 def translate_holiday_name(holiday_name: str) -> str:
