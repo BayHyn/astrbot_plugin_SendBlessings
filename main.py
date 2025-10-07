@@ -719,6 +719,12 @@ class SendBlessingsPlugin(Star):
         self.nap_server_address = config.get("nap_server_address", "localhost")
         self.nap_server_port = config.get("nap_server_port", 3658)
         
+        # 加载参考图配置
+        self.reference_images_config = config.get("reference_images", {})
+        self.reference_images_enabled = self.reference_images_config.get("enabled", False)
+        self.reference_image_paths = self.reference_images_config.get("image_paths", [])
+        self.max_reference_images = self.reference_images_config.get("max_images", 3)
+        
         self.holidays = []
         self.target_sessions = config.get("target_sessions", [])  # 从配置中读取目标会话列表
         self.logger = logger
@@ -815,6 +821,145 @@ class SendBlessingsPlugin(Star):
         except Exception as e:
             self.logger.error(f"手动祝福失败: {e}")
             yield event.plain_result(f"手动祝福失败: {str(e)}")
+
+    @filter.command("blessings test")
+    async def test_target_sessions(self, event: AstrMessageEvent):
+        """测试目标会话列表功能（仅管理员）"""
+        if not event.is_admin():
+            yield event.plain_result("仅管理员可使用此命令。")
+            return
+        
+        try:
+            if not self.target_sessions:
+                yield event.plain_result("未配置目标会话列表，请在配置文件中添加 target_sessions。")
+                return
+            
+            # 生成测试祝福
+            test_blessing = "🎉 这是一条测试消息，用于验证目标会话配置是否正确。如果您收到此消息，说明配置成功！"
+            
+            # 生成测试图片（可选）
+            test_image_url, test_image_path = None, None
+            if self.openrouter_api_keys:
+                try:
+                    test_image_url, test_image_path = await self.generate_image(test_blessing, "测试")
+                except Exception as e:
+                    self.logger.warning(f"生成测试图片失败: {e}")
+            
+            # 构建测试消息链
+            if test_image_path:
+                test_chain = [
+                    Comp.Plain(test_blessing),
+                    Comp.Image.fromFileSystem(test_image_path)
+                ]
+            else:
+                test_chain = [Comp.Plain(test_blessing)]
+            
+            # 发送到所有目标会话
+            success_count = 0
+            failed_sessions = []
+            
+            for session in self.target_sessions:
+                try:
+                    await self.context.send_message(session, test_chain)
+                    success_count += 1
+                    self.logger.info(f"测试消息已发送到 {session}")
+                except Exception as e:
+                    failed_sessions.append(session)
+                    self.logger.error(f"发送测试消息到 {session} 失败: {e}")
+            
+            # 返回测试结果
+            result_message = f"测试完成！\n"
+            result_message += f"✅ 成功发送: {success_count} 个会话\n"
+            if failed_sessions:
+                result_message += f"❌ 发送失败: {len(failed_sessions)} 个会话\n"
+                result_message += f"失败会话: {', '.join(failed_sessions[:3])}"
+                if len(failed_sessions) > 3:
+                    result_message += f" 等{len(failed_sessions)}个"
+            
+            yield event.plain_result(result_message)
+            
+        except Exception as e:
+            self.logger.error(f"测试目标会话失败: {e}")
+            yield event.plain_result(f"测试失败: {str(e)}")
+
+    async def load_reference_images(self):
+        """加载并转换参考图片为base64格式"""
+        if not self.reference_images_enabled:
+            return []
+        
+        base64_images = []
+        valid_paths = self.validate_image_paths()
+        
+        for image_path in valid_paths[:self.max_reference_images]:
+            try:
+                base64_data = await self.convert_image_to_base64(image_path)
+                if base64_data:
+                    base64_images.append(base64_data)
+            except Exception as e:
+                self.logger.warning(f"加载参考图 {image_path} 失败: {e}")
+        
+        if base64_images:
+            self.logger.info(f"成功加载 {len(base64_images)} 张参考图")
+        
+        return base64_images
+
+    def validate_image_paths(self):
+        """验证图片路径有效性"""
+        valid_paths = []
+        for path in self.reference_image_paths:
+            # 支持相对路径和绝对路径
+            if os.path.isabs(path):
+                full_path = path
+            else:
+                full_path = os.path.join(os.path.dirname(__file__), path)
+            
+            if os.path.exists(full_path) and os.path.isfile(full_path):
+                valid_paths.append(full_path)
+            else:
+                self.logger.warning(f"参考图路径不存在: {path}")
+        return valid_paths
+
+    async def convert_image_to_base64(self, image_path: str):
+        """转换图片为base64格式"""
+        try:
+            async with aiofiles.open(image_path, 'rb') as f:
+                image_data = await f.read()
+            
+            # 检查文件大小，如果太大则给出警告
+            if len(image_data) > 5 * 1024 * 1024:  # 5MB
+                self.logger.warning(f"图片 {image_path} 过大 ({len(image_data)/1024/1024:.1f}MB)，建议压缩后使用")
+            
+            base64_data = base64.b64encode(image_data).decode('utf-8')
+            
+            # 检测图片格式并添加正确的MIME类型
+            ext = os.path.splitext(image_path)[1].lower()
+            if ext in ['.png']:
+                mime_type = 'image/png'
+            elif ext in ['.jpg', '.jpeg']:
+                mime_type = 'image/jpeg'
+            elif ext in ['.gif']:
+                mime_type = 'image/gif'
+            elif ext in ['.webp']:
+                mime_type = 'image/webp'
+            else:
+                mime_type = 'image/png'  # 默认
+                self.logger.warning(f"未知图片格式 {ext}，使用默认PNG格式")
+            
+            return f"data:{mime_type};base64,{base64_data}"
+            
+        except Exception as e:
+            self.logger.error(f"转换图片 {image_path} 为base64失败: {e}")
+            return None
+
+    def build_reference_prompt(self, blessing: str, holiday_name: str, has_reference: bool):
+        """构建包含参考图信息的提示词"""
+        base_prompt = f"{holiday_name} 节日祝福海报，温暖喜庆风格，包含文字：{blessing[:50]}...，节日元素如灯笼/花朵/雪花等，高质量，卡通插画风格，节日氛围浓厚，中文文字清晰可见"
+        
+        if has_reference:
+            reference_prompt = f"请基于提供的参考图片中的人物、场景和元素，创作{base_prompt}。保持参考图中人物的特征和风格，将其融入到节日场景中，确保画面和谐统一，节日氛围浓厚。如果参考图中有人物，请保持其外观特征；如果有特定场景，请将节日元素自然融入其中。"
+            return reference_prompt
+        else:
+            return base_prompt
 
     async def terminate(self):
         """插件销毁：清理资源"""
@@ -923,20 +1068,24 @@ class SendBlessingsPlugin(Star):
             return f"{holiday_name}快乐！祝您节日愉快！"
     
     async def generate_image(self, blessing: str, holiday_name: str) -> tuple:
-        """生成节日祝福图片，使用 OpenRouter API"""
+        """生成节日祝福图片，支持参考图功能"""
         try:
             if not self.openrouter_api_keys:
                 self.logger.warning("未配置OpenRouter API密钥，跳过图片生成")
                 return None, None
             
+            # 加载参考图
+            reference_images = await self.load_reference_images()
+            
             # 构建图像生成提示词
-            prompt = f"{holiday_name} 节日祝福海报，温暖喜庆风格，包含文字：{blessing[:50]}...，节日元素如灯笼/花朵/雪花等，高质量，卡通插画风格，节日氛围浓厚，中文文字清晰可见"
+            prompt = self.build_reference_prompt(blessing, holiday_name, bool(reference_images))
             
             # 调用内联的生成函数
             image_url, image_path = await generate_image_openrouter(
                 prompt=prompt,
                 api_keys=self.openrouter_api_keys,
                 model=self.model_name,
+                input_images=reference_images,  # 传入参考图
                 max_retry_attempts=self.max_retry_attempts,
                 api_base=self.custom_api_base if self.custom_api_base else None
             )

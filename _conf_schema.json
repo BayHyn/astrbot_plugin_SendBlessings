@@ -58,5 +58,32 @@
     "hint": "格式示例：['aiocqhttp:GROUP:123456789', 'aiocqhttp:PRIVATE:987654321']。留空则不自动发送，仅支持手动命令。",
     "default": [],
     "obvious_hint": true
+  },
+  "reference_images": {
+    "description": "参考图功能配置",
+    "type": "object",
+    "items": {
+      "enabled": {
+        "description": "启用参考图功能",
+        "type": "bool",
+        "hint": "开启后可使用参考图片生成个性化节日祝福",
+        "default": false,
+        "obvious_hint": true
+      },
+      "image_paths": {
+        "description": "参考图片路径列表",
+        "type": "list",
+        "hint": "支持多张图片，相对于插件目录的路径。格式：PNG/JPG/JPEG/GIF。示例：['images/ref1.jpg', 'images/ref2.png']",
+        "default": [],
+        "obvious_hint": true
+      },
+      "max_images": {
+        "description": "最大参考图片数量",
+        "type": "int",
+        "hint": "限制同时使用的参考图片数量，避免API调用过大",
+        "default": 3,
+        "obvious_hint": false
+      }
+    }
   }
 }
