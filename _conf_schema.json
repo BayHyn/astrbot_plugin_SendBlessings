@@ -67,6 +67,23 @@
                 "type": "int",
                 "default": 3
             }
+        },
+        "target_sessions": {
+            "description": "祝福消息发送目标白名单",
+            "type": "object",
+            "hint": "配置后，插件将只向白名单中的用户和群组发送祝福。如果列表为空，则默认向所有好友和群组发送。",
+            "items": {
+                "user_ids": {
+                    "description": "用户ID白名单 (QQ号)",
+                    "type": "list",
+                    "default": []
+                },
+                "group_ids": {
+                    "description": "群组ID白名单 (群号)",
+                    "type": "list",
+                    "default": []
+                }
+            }
         }
     }
 }
