@@ -1,6 +1,7 @@
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
+from astrbot.api.platform import MessageSession, MessageType
 import astrbot.api.message_components as Comp
 import asyncio
 import aiohttp
@@ -403,9 +404,13 @@ class SendBlessingsPlugin(Star):
             for friend in friend_list:
                 user_id = friend.get('user_id')
                 if not user_id: continue
-                session_str = f"aiocqhttp:private:{user_id}"
+                session = MessageSession(
+                    platform_name=\"aiocqhttp\",
+                    message_type=MessageType.FRIEND_MESSAGE,
+                    session_id=str(user_id)
+                )
                 try:
-                    await self.context.send_message(session_str, test_chain)
+                    await self.context.send_message(session, test_chain)
                     success_count += 1
                     self.logger.info(f"测试消息已发送到用户 {user_id}")
                     await asyncio.sleep(1) # 避免发送过快
@@ -417,9 +422,13 @@ class SendBlessingsPlugin(Star):
             for group in group_list:
                 group_id = group.get('group_id')
                 if not group_id: continue
-                session_str = f"aiocqhttp:group:{group_id}"
+                session = MessageSession(
+                    platform_name=\"aiocqhttp\",
+                    message_type=MessageType.GROUP_MESSAGE,
+                    session_id=str(group_id)
+                )
                 try:
-                    await self.context.send_message(session_str, test_chain)
+                    await self.context.send_message(session, test_chain)
                     success_count += 1
                     self.logger.info(f"测试消息已发送到群组 {group_id}")
                     await asyncio.sleep(1) # 避免发送过快
@@ -603,9 +612,13 @@ class SendBlessingsPlugin(Star):
                     for friend in friend_list:
                         user_id = friend.get('user_id')
                         if not user_id: continue
-                        session_str = f"aiocqhttp:private:{user_id}"
+                        session = MessageSession(
+                            platform_name=\"aiocqhttp\",
+                            message_type=MessageType.FRIEND_MESSAGE,
+                            session_id=str(user_id)
+                        )
                         try:
-                            await self.context.send_message(session_str, chain)
+                            await self.context.send_message(session, chain)
                             sent_count += 1
                             self.logger.info(f"祝福消息已发送到用户 {user_id}")
                             await asyncio.sleep(5) # 减慢发送速度
@@ -616,9 +629,13 @@ class SendBlessingsPlugin(Star):
                     for group in group_list:
                         group_id = group.get('group_id')
                         if not group_id: continue
-                        session_str = f"aiocqhttp:group:{group_id}"
+                        session = MessageSession(
+                            platform_name=\"aiocqhttp\",
+                            message_type=MessageType.GROUP_MESSAGE,
+                            session_id=str(group_id)
+                        )
                         try:
-                            await self.context.send_message(session_str, chain)
+                            await self.context.send_message(session, chain)
                             sent_count += 1
                             self.logger.info(f"祝福消息已发送到群组 {group_id}")
                             await asyncio.sleep(5) # 减慢发送速度
