@@ -200,7 +200,8 @@ class SendBlessingsPlugin(Star):
         self.max_reference_images = self.reference_images_config.get("max_images", 3)
         
         self.holidays = []
-        self.target_sessions = config.get("target_sessions", [])  # 从配置中读取目标会话列表
+        self.user_limits = config.get("user_limits", [])
+        self.group_limits = config.get("group_limits", [])
         self.logger = logger
         
         # 启动初始化任务
@@ -301,8 +302,8 @@ class SendBlessingsPlugin(Star):
     async def test_target_sessions(self, event: AstrMessageEvent):
         """测试目标会话列表功能（仅管理员）"""
         try:
-            if not self.target_sessions:
-                yield event.plain_result("未配置目标会话列表，请在配置文件中添加 target_sessions。")
+            if not self.user_limits and not self.group_limits:
+                yield event.plain_result("未配置目标会话列表，请在配置文件中添加 user_limits 或 group_limits。")
                 return
 
             test_blessing = "🎉 这是一条测试消息，用于验证目标会话配置是否正确。如果您收到此消息，说明配置成功！"
@@ -320,35 +321,31 @@ class SendBlessingsPlugin(Star):
 
             success_count = 0
             failed_sessions_info = []
+            
+            # 发送到用户
+            for user_id in self.user_limits:
+                session_str = f"aiocqhttp:friend:{user_id}"
+                try:
+                    await self.context.send_message(session_str, test_chain)
+                    success_count += 1
+                    self.logger.info(f"测试消息已发送到用户 {user_id}")
+                except Exception as e:
+                    failed_sessions_info.append(f"用户 {user_id} (原因: {e})")
+                    self.logger.error(f"发送测试消息到用户 {user_id} 失败: {e}")
 
-            for session_info in self.target_sessions:
-                if isinstance(session_info, dict) and all(k in session_info for k in ['platform', 'type', 'id']):
-                    platform = session_info['platform']
-                    session_type = 'friend' if session_info['type'] == 'private' else session_info['type']
-                    session_id = session_info['id']
-                    
-                    # 构造正确的会话字符串
-                    session_str = f"{platform}:{session_type}:{session_id}"
-                    
-                    try:
-                        await self.context.send_message(session_str, test_chain)
-                        success_count += 1
-                        self.logger.info(f"测试消息已发送到 {session_str}")
-                    except Exception as e:
-                        failed_sessions_info.append(f"{session_str} (原因: {e})")
-                        self.logger.error(f"发送测试消息到 {session_str} 失败: {e}")
-                else:
-                    # 兼容旧的字符串格式
-                    session_str = str(session_info)
-                    try:
-                        await self.context.send_message(session_str, test_chain)
-                        success_count += 1
-                        self.logger.info(f"测试消息已发送到 {session_str} (旧格式)")
-                    except Exception as e:
-                        failed_sessions_info.append(f"{session_str} (原因: {e})")
-                        self.logger.error(f"发送测试消息到 {session_str} (旧格式) 失败: {e}")
+            # 发送到群组
+            for group_id in self.group_limits:
+                session_str = f"aiocqhttp:group:{group_id}"
+                try:
+                    await self.context.send_message(session_str, test_chain)
+                    success_count += 1
+                    self.logger.info(f"测试消息已发送到群组 {group_id}")
+                except Exception as e:
+                    failed_sessions_info.append(f"群组 {group_id} (原因: {e})")
+                    self.logger.error(f"发送测试消息到群组 {group_id} 失败: {e}")
 
-            result_message = f"测试完成！\n✅ 成功发送: {success_count} 个会话\n"
+            total_targets = len(self.user_limits) + len(self.group_limits)
+            result_message = f"测试完成！共 {total_targets} 个目标。\n✅ 成功发送: {success_count} 个会话\n"
             if failed_sessions_info:
                 result_message += f"❌ 发送失败: {len(failed_sessions_info)} 个会话\n"
                 result_message += f"失败详情: {', '.join(failed_sessions_info[:3])}"
@@ -487,24 +484,26 @@ class SendBlessingsPlugin(Star):
                     
                     # 发送到目标会话
                     sent_count = 0
-                    for session_info in self.target_sessions:
-                        session_str = None
+                    # 发送到用户
+                    for user_id in self.user_limits:
+                        session_str = f"aiocqhttp:friend:{user_id}"
                         try:
-                            if isinstance(session_info, dict) and all(k in session_info for k in ['platform', 'type', 'id']):
-                                platform = session_info['platform']
-                                session_type = 'friend' if session_info['type'] == 'private' else session_info['type']
-                                session_id = session_info['id']
-                                session_str = f"{platform}:{session_type}:{session_id}"
-                            else:
-                                # 兼容旧的字符串格式
-                                session_str = str(session_info)
-
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
-                            self.logger.info(f"祝福消息已发送到 {session_str}")
+                            self.logger.info(f"祝福消息已发送到用户 {user_id}")
                         except Exception as e:
-                            self.logger.error(f"发送到 {session_str or session_info} 失败: {e}")
+                            self.logger.error(f"发送祝福到用户 {user_id} 失败: {e}")
                     
+                    # 发送到群组
+                    for group_id in self.group_limits:
+                        session_str = f"aiocqhttp:group:{group_id}"
+                        try:
+                            await self.context.send_message(session_str, chain)
+                            sent_count += 1
+                            self.logger.info(f"祝福消息已发送到群组 {group_id}")
+                        except Exception as e:
+                            self.logger.error(f"发送祝福到群组 {group_id} 失败: {e}")
+
                     if sent_count > 0:
                         self.logger.info(f"今日祝福已发送到 {sent_count} 个会话")
                     else:

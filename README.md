@@ -1,302 +1,70 @@
-# SendBlessings 插件
+# AstrBot 节日祝福插件 (SendBlessings)
 
-一个在节假日自动发送祝福语和生成节日图片的 AstrBot 插件。插件会在中国传统节假日的第一天自动生成并发送节日祝福消息，包括文字祝福和节日主题图片。
+[简体中文] [[English]](./README_en.md)
+
+---
+
+## 简介
+
+**SendBlessings** 是一款为 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 设计的自动化节日祝福插件。它能够自动检测中国的法定节假日，并在假期的第一天，向指定的QQ群和好友发送包含精美配图的节日祝福。
+
+插件内置了强大的图像生成功能，可以根据节日主题动态生成祝福图片，并支持使用LLM（大型语言模型）生成个性化的祝福语。
 
 ## 功能特点
 
-- 📅 **自动节假日检测**：使用 `chinese_calendar` 库自动检测中国传统节假日
-- 🎉 **智能祝福生成**：使用 LLM 生成个性化、节日氛围浓厚的祝福语
-- 🖼️ **节日主题图片**：集成 OpenRouter API 生成高质量节日祝福海报
-- 🌐 **多平台支持**：兼容 QQ、Telegram 等平台的 NAP 文件传输
-- 🔧 **配置灵活**：支持自定义 API 配置、NAP 服务器设置等
-- 🛡️ **错误处理**：完善的异常处理和日志记录，确保稳定运行
+-   **自动检测节假日**: 自动获取并缓存当前年份的法定节假日信息，无需手动干预。
+-   **定时发送祝福**: 在每个法定节假日的凌晨自动触发，发送祝福。
+-   **动态图片生成**: 利用 [OpenRouter](https://openrouter.ai/) API 和可配置的图像生成模型（如 `Google Gemini`），为每个节日动态生成独一无二的祝福图片。
+-   **智能祝福语**: 可选地使用已配置的LLM生成更具人情味的个性化祝福语。
+-   **灵活的目标配置**: 支持分别配置需要发送祝福的QQ群和QQ好友列表。
+-   **参考图支持**: 支持在生成图片时使用本地图片作为风格或内容参考。
+-   **跨服务器文件传输**: 内置NAP（NapCat）文件传输支持，轻松实现机器人与协议端分离部署。
+-   **管理员工具**: 提供丰富的管理员命令，方便进行测试、重载数据和手动发送祝福。
 
-## 安装配置
+## 安装与配置
 
-### 1. 环境准备
+1.  **下载插件**: 推荐使用AstrBot的插件管理器安装。或者将插件文件夹放置于 AstrBot 的 `data/plugins` 目录下，并手动安装依赖。
+2. **配置插件**: 在 AstrBot 的 WebUI 中，进入“插件管理”，找到“SendBlessings”插件，点击“配置”按钮进行可视化配置。
 
-确保您的 AstrBot 环境已安装以下依赖（通过 `requirements.txt`）：
+### 配置项说明
 
-```txt
-chinese_calendar
-cn_bing_translator
-aiohttp
-aiofiles
-```
-
-### 2. 配置插件
-
-插件配置通过 `_conf_schema.json` 文件进行可视化配置，也可在 WebUI 中直接编辑。
-
-#### 核心配置项
-
-- **enabled** (bool): 启用/禁用插件，默认 `true`
-- **openrouter_api_keys** (list): OpenRouter API 密钥列表，支持多个密钥自动轮换
-  - 前往 [OpenRouter](https://openrouter.ai/) 注册账号获取 API Key
-  - 示例：`["sk-xxx1", "sk-xxx2"]`
-- **model_name** (string): 图像生成模型，默认 `google/gemini-2.5-flash-image-preview:free`
-- **max_retry_attempts** (int): 每个 API 密钥的最大重试次数，默认 `3`
-- **custom_api_base** (string): 自定义 API Base URL（可选，用于代理）
-- **nap_server_address** (string): NAP cat 服务地址，默认 `localhost`
-- **nap_server_port** (int): NAP cat 服务端口，默认 `3658`
-- **holidays_file** (string): 节假日数据文件路径，默认 `data/holidays.json`
-
-#### 配置示例
-
-在插件管理界面配置以下内容：
-
-```json
-{
-  "enabled": true,
-  "openrouter_api_keys": [
-    "your_openrouter_api_key_here"
-  ],
-  "model_name": "google/gemini-2.5-flash-image-preview:free",
-  "max_retry_attempts": 3,
-  "custom_api_base": "",
-  "nap_server_address": "localhost",
-  "nap_server_port": 3658,
-  "holidays_file": "data/holidays.json"
-}
-```
-
-### 3. 目标会话配置
-
-插件会自动发送祝福到配置的目标会话。需要在 `main.py` 的 `__init__` 方法中设置 `self.target_sessions` 列表：
-
-```python
-self.target_sessions = [
-    'aiocqhttp:GROUP:123456789',  # QQ 群
-    'aiocqhttp:FRIEND:987654321', # QQ 私聊
-    # 添加更多会话 ID
-]
-```
-
-**注意**：请替换为实际的会话 ID 格式 `platform:TYPE:session_id`。
+-   `enabled`: 是否启用插件 (布尔型, 默认: `true`)。
+-   `openrouter_api_keys`: 大模型的 API 密钥列表 (列表, 必需)。支持填写多个密钥以实现自动轮换。
+-   `custom_api_base`: 自定义 API Base URL (字符串, 可选)。用于指定兼容OpenRouter API的代理地址。
+-   `model_name`: 用于生成图片的模型名称 (字符串, 默认: `google/gemini-2.5-flash-image-preview:free`)。
+-   `max_retry_attempts`: 每个API密钥的最大重试次数 (整数, 默认: `3`)。
+-   `holidays_file`: 节假日数据缓存文件名 (字符串, 默认: `holidays.json`)。
+-   **`user_limits`**: **需要发送私聊祝福的用户QQ号列表** (列表, 核心配置)。在此处添加需要接收祝福的QQ号。
+-   **`group_limits`**: **需要发送群聊祝福的QQ群号列表** (列表, 核心配置)。在此处添加需要接收祝福的QQ群号。
+-   `nap_server_address`: NAP cat 服务地址 (字符串, 默认: `localhost`)。如果机器人和NapCat不在同一台服务器，请填写NapCat服务器的IP地址。
+-   `nap_server_port`: NAP cat 文件接收端口 (整数, 默认: `3658`)。
+-   `reference_images`: 参考图相关配置 (对象)。
+    -   `enabled`: 是否启用参考图功能 (布尔型, 默认: `false`)。
+    -   `image_paths`: 参考图文件路径列表 (列表)。路径是相对于插件目录的。
+    -   `max_images`: 最多使用的参考图数量 (整数, 默认: `3`)。
 
 ## 使用方法
 
-### 自动运行
+插件的核心功能是全自动的，配置完成后即可在节假日自动发送祝福。此外，插件还提供了一些方便管理的命令。
 
-1. 确保插件已启用（`enabled: true`）
-2. 配置有效的 OpenRouter API 密钥
-3. 设置目标会话列表
-4. 插件会在节假日第一天自动检测并发送祝福消息
+### 管理员命令
 
-### 手动命令
-
-插件提供以下管理命令：
-
-- **/blessings reload**：重新加载节假日数据
-  - 用例：节假日数据更新后手动刷新
-
-- **/blessings check**：检查今天是否为节假日第一天
-  - 用例：快速验证当前日期状态
-
-- **/blessings manual [节日名称]**：手动生成并发送节日祝福（仅管理员）
-  - 用例：测试插件功能或临时发送祝福
-  - 示例：`/blessings manual`（使用今天节日）或 `/blessings manual 元旦`
-
-### 工作流程
-
-1. **每日检查**：插件每天自动检查当前日期
-2. **节日检测**：使用 `chinese_calendar` 库判断是否为节假日第一天
-3. **祝福生成**：调用 LLM 生成节日祝福语
-4. **图片生成**：使用 OpenRouter API 生成节日主题图片
-5. **消息发送**：将祝福语和图片组合成消息链，发送到目标会话
-
-## 故障排除
-
-### 常见问题
-
-1. **插件启动失败**
-   - 检查所有依赖是否正确安装
-   - 确认配置文件格式正确
-   - 查看 AstrBot 日志中的错误信息
-
-2. **图片生成失败**
-   - 验证 OpenRouter API Key 是否有效
-   - 检查网络连接是否正常
-   - 确认 API 额度是否充足
-
-3. **自动发送不工作**
-   - 确认 `enabled` 设置为 `true`
-   - 检查 `target_sessions` 配置是否正确
-   - 验证会话 ID 格式是否正确
-
-### 日志查看
-
-插件会输出详细的日志信息，包括：
-- 节假日检测结果
-- API 调用状态
-- 图片生成进度
-- 消息发送结果
-
-## 更新日志
-
-### v1.0.0 (2024-10-07) - 重大修复版本
-
-**🔧 关键修复**
-- **修复 datetime 导入错误**：解决 `AttributeError: 'module' object has no attribute 'now'` 问题
-- **修复导入冲突**：解决 `chinese_calendar` 与标准库 `calendar` 的命名冲突
-- **修复语法错误**：修复代码中的拼写错误和语法问题
-- **修复 API 调用**：优化 AstrBot 消息发送 API 的使用方式
-
-**✨ 功能改进**
-- **添加目标会话配置**：支持通过配置文件设置目标会话列表
-- **完善错误处理**：增强异常处理机制，提高插件稳定性
-- **优化代码结构**：重构代码，提高可维护性
-- **改进日志输出**：使用统一的日志系统，便于调试
-
-**📚 文档更新**
-- **完善配置说明**：添加详细的配置项说明
-- **添加故障排除指南**：提供常见问题的解决方案
-- **更新使用说明**：完善命令使用和功能介绍
-
-**🛡️ 稳定性提升**
-- **增强异常处理**：所有关键操作都添加了异常捕获
-- **改进重试机制**：优化 API 调用的重试逻辑
-- **资源管理**：自动清理过期的图片文件
-
-**⚠️ 重要变更**
-- 配置文件中添加了 `target_sessions` 配置项
-- 节假日数据文件路径改为相对于 data 目录
-- 移除了对已废弃 API 的依赖
-
-**🔄 迁移指南**
-如果您从旧版本升级，请：
-1. 更新配置文件，添加 `target_sessions` 配置
-2. 检查节假日数据文件路径是否正确
-3. 重新启动 AstrBot 以应用更改
+-   `/blessings reload`: 重新从网络获取并加载当前年份的节假日数据。
+-   `/blessings check`: 检查今天是否是节假日的第一天，并返回检查结果。
+-   `/blessings manual [holiday_name]`: 手动触发一次祝福生成和发送流程。如果提供了 `holiday_name`，则使用该名称，否则使用当天的节日名称。该命令会将祝福发送到**当前会话**，主要用于测试。
+-   `/blessings test`: 向配置文件中 `user_limits` 和 `group_limits` 列表里的所有目标发送一条测试消息，用于验证配置是否正确。
 
 ## 技术实现
 
-### 核心组件
+-   **节假日数据**: 使用 `chinese-calendar` 库获取中国的法定节假日和调休信息。
+-   **祝福语生成**: 优先尝试使用 AstrBot 中配置的LLM提供商生成祝福语，如果失败则回退到内置的模板祝福语。
+-   **图片生成**: 通过 `aiohttp` 异步请求 OpenRouter API，调用指定的模型生成图片。支持多密钥轮换和指数退避重试机制，以提高成功率。
+-   **文件处理**: 生成的图片保存在 `data/SendBlessings/images` 目录下，并会自动清理过期文件。如果配置了NAP服务，则会将图片发送到协议端服务器再进行处理。
 
-- **main.py**：插件主逻辑，包含节假日检测、LLM 祝福生成、图片生成和消息发送
-- **utils/ttp.py**：OpenRouter API 图像生成模块，支持多密钥轮换和重试机制
-- **utils/file_send_server.py**：NAP 文件传输模块，支持本地和远程服务器传输
-- **holidays_get.py**：节假日数据获取和缓存模块（可选导入）
-
-### 关键方法
-
-- **generate_blessing()**：使用 LLM 生成节日祝福语
-  - 查询节日习俗作为上下文
-  - 生成 50-100 字的中文祝福语
-
-- **query_holiday_customs()**：查询节日习俗信息
-  - 使用 AstrBot 内置 websearch 功能
-  - 增强祝福语的节日相关性和文化准确性
-
-- **generate_image()**：生成节日主题图片
-  - 调用 OpenRouter API（Gemini 模型）
-  - 支持 NAP 文件传输
-  - 自动清理过期图片文件
-
-- **daily_blessing_checker()**：每日定时检查任务
-  - 24 小时周期运行
-  - 检测节假日第一天并触发祝福生成
-  - 支持多会话并发发送
-
-### 图片生成流程
-
-1. 构建节日主题提示词（包含祝福语和节日元素）
-2. 调用 `generate_image_openrouter()` 函数
-3. 处理 NAP 传输（如果配置了远程服务器）
-4. 返回图片 URL 用于消息链构建
-
-### 文件结构
-
-```
-astrbot_plugin_SendBlessings/
-├── main.py                 # 插件主文件
-├── metadata.yaml          # 插件元数据
-├── _conf_schema.json      # 配置模式定义
-├── utils/
-│   ├── ttp.py            # OpenRouter API 调用和图像处理
-│   └── file_send_server.py # NAP 文件传输工具
-├── images/               # 生成的图像临时存储目录
-├── LICENSE              # 许可证文件
-├── README.md           # 项目说明文档
-└── requirements.txt    # Python 依赖
-```
-
-## 错误处理
-
-插件包含完善的错误处理机制：
-
-- **API 调用失败**：自动重试和密钥轮换
-- **网络异常**：超时处理和连接错误恢复
-- **文件操作异常**：图片保存和传输失败的回退机制
-- **数据加载异常**：节假日数据缺失时的自动更新
-- **权限检查**：管理员命令的权限验证
-
-## 测试指南
-
-### 1. 单元测试
-
-使用 `/blessings manual` 命令测试单个功能：
-
-```
-/blessings manual 元旦
-```
-
-### 2. 完整流程测试
-
-1. 配置 OpenRouter API 密钥
-2. 设置目标会话
-3. 等待节假日或使用手动命令测试
-
-### 3. 日志检查
-
-查看日志确认：
-- 节假日检测是否正确
-- LLM 响应是否正常
-- 图片生成和传输是否成功
-
-## 常见问题
-
-### Q: 插件没有发送祝福消息
-
-**A**：
-1. 检查插件是否启用（`enabled: true`）
-2. 确认 OpenRouter API 密钥有效
-3. 查看日志确认节假日检测结果
-4. 确保目标会话列表不为空
-
-### Q: 图片生成失败
-
-**A**：
-1. 检查 API 密钥额度是否耗尽
-2. 确认模型名称是否正确
-3. 查看网络连接状态
-4. 检查 NAP 服务器配置（如果使用远程传输）
-
-### Q: 节假日数据不准确
-
-**A**：
-1. 执行 `/blessings reload` 重新加载
-2. 检查 `holidays_file` 路径配置
-3. 确认网络连接（websearch 查询习俗）
-
-## 贡献指南
-
-欢迎提交 Issue 和 Pull Request 来改进这个插件。
-
-### 开发建议
-
-- **节日扩展**：添加更多国家和地区的节日
-- **图片风格**：支持自定义节日图片模板
-- **多语言支持**：扩展到英文、日文等语言祝福
-- **定时优化**：精确到 UTC 时间进行节日检测
+## 使用的第三方库
+- [AstrBot](https://github.com/AstrBotDevs/AstrBot) 提供的强大、灵活的机器人平台
+- [cn_bing_translator](https://github.com/minibear2021/cn_bing_translator) 提供的翻译功能
+- [chinese-calendar](https://github.com/LKI/chinese-calendar) 提供的中国节假日获取功能
 
 ## 许可证
-
-本项目采用开源许可证，详见 LICENSE 文件。
-
-## 联系方式
-
-- **作者**: Cheng-MaoMao
-- **版本**: 1.0.0
-- **许可证**: 见 LICENSE 文件
-- **项目地址**: [GitHub Repository](https://github.com/your-username/astrbot_plugin_SendBlessings)
+本项目采用 AGPL-3.0 许可证，详情请参阅 [LICENSE](https://github.com/Cheng-MaoMao/astrbot_plugin_SendBlessings?tab=AGPL-3.0-1-ov-file#readme) 文件。

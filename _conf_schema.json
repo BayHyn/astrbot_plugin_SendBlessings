@@ -38,33 +38,17 @@
         "type": "string",
         "default": "holidays.json"
     },
-    "target_sessions": {
-        "description": "需要发送祝福的目标会话列表",
+    "user_limits": {
+        "description": "需要发送私聊祝福的用户QQ号列表 (仅支持aiocqhttp)",
         "type": "list",
-        "hint": "配置需要自动发送祝福的群聊或私聊。请填写平台、类型和ID。",
-        "default": [],
-        "items": {
-            "type": "object",
-            "items": {
-                "platform": {
-                    "description": "平台名称",
-                    "type": "string",
-                    "default": "aiocqhttp",
-                    "options": ["aiocqhttp", "telegram", "qq_official", "feishu", "wechat", "dingtalk"]
-                },
-                "type": {
-                    "description": "会话类型",
-                    "type": "string",
-                    "default": "group",
-                    "options": ["group", "private"]
-                },
-                "id": {
-                    "description": "群号或QQ号",
-                    "type": "string",
-                    "default": ""
-                }
-            }
-        }
+        "hint": "在此处添加需要自动发送祝福的用户QQ号。",
+        "default": []
+    },
+    "group_limits": {
+        "description": "需要发送群聊祝福的QQ群号列表 (仅支持aiocqhttp)",
+        "type": "list",
+        "hint": "在此处添加需要自动发送祝福的QQ群号。",
+        "default": []
     },
     "nap_server_address": {
         "description": "（可选）NAP cat 服务地址，用于跨服务器传输文件",
