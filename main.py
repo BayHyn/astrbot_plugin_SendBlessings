@@ -212,7 +212,7 @@ def check_single_date(date_input: date, holidays: list):
     logger.info(f"查询结果: 在 {date_input.year} 年的记录中未找到 {date_input}。")
 
 
-@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.0.5")
+@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.0.6")
 class SendBlessingsPlugin(Star):
     """
     自动发送节假日祝福插件。
@@ -356,13 +356,38 @@ class SendBlessingsPlugin(Star):
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("blessings test")
-    async def test_target_sessions(self, event: AstrMessageEvent):
+    async def test_target_sessions(self, event: AstrMessageEvent, custom_text: str = None):
         """
         [管理员指令] 向所有已连接的群组和好友发送一条测试消息，以验证广播功能。
+        
+        支持在指令后附加自定义文本作为测试消息内容。
+        支持在消息中附带图片，作为图像生成的参考。
+
+        用法:
+        - /blessings test
+        - /blessings test 这是自定义的测试消息
+        - /blessings test [并附带一张或多张图片]
         """
         try:
             yield event.plain_result("正在开始广播功能测试... 此功能仅为 NapCatQQ 设计，请确保您正在使用 aiocqhttp 适配器。")
+
+            # 提取参考图
+            reference_images_base64 = []
+            if event.message:
+                for component in event.message.chain:
+                    if isinstance(component, Comp.Image):
+                        try:
+                            image_path = await component.get_image_path(self.context)
+                            if image_path:
+                                base64_data = await self.convert_image_to_base64(image_path)
+                                if base64_data:
+                                    reference_images_base64.append(base64_data)
+                        except Exception as e:
+                            self.logger.warning(f"处理指令中的参考图失败: {e}")
             
+            if reference_images_base64:
+                yield event.plain_result(f"已检测到 {len(reference_images_base64)} 张参考图，将用于生成测试图片。")
+
             platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
             if not platform or not hasattr(platform, "get_client"):
                 yield event.plain_result("错误：无法获取 aiocqhttp 平台适配器。测试中止。")
@@ -381,18 +406,26 @@ class SendBlessingsPlugin(Star):
                 yield event.plain_result("未能获取到任何好友或群组列表。")
                 return
 
-            test_blessing = "🎉 这是一条广播功能测试消息。如果您收到此消息，说明插件可以正常向您发送祝福！"
+            test_blessing = custom_text if custom_text else "🎉 这是一条广播功能测试消息。如果您收到此消息，说明插件可以正常向您发送祝福！"
             
             test_image_url, test_image_path = None, None
             if self.openrouter_api_keys:
                 try:
-                    test_image_url, test_image_path = await self.generate_image(test_blessing, "测试")
+                    test_image_url, test_image_path = await self.generate_image(
+                        blessing=test_blessing,
+                        holiday_name="测试",
+                        cmd_ref_images=reference_images_base64
+                    )
                 except Exception as e:
                     self.logger.warning(f"生成测试图片失败: {e}")
 
             test_chain = [Comp.Plain(test_blessing)]
             if test_image_path:
                 test_chain.append(Comp.Image.fromFileSystem(test_image_path))
+            else:
+                # 如果图片生成失败，也给一个提示
+                if self.openrouter_api_keys:
+                    test_chain.append(Comp.Plain("\n(测试图片生成失败)"))
 
             success_count = 0
             failed_sessions_info = []
@@ -694,7 +727,7 @@ class SendBlessingsPlugin(Star):
             self.logger.error(f"生成祝福语时发生未知错误: {e}")
             return f"祝您{holiday_name}快乐！"
     
-    async def generate_image(self, blessing: str, holiday_name: str) -> tuple[str | None, str | None]:
+    async def generate_image(self, blessing: str, holiday_name: str, cmd_ref_images: list[str] = None) -> tuple[str | None, str | None]:
         """
         生成并保存节日祝福图片。
 
@@ -704,6 +737,7 @@ class SendBlessingsPlugin(Star):
         Args:
             blessing (str): 生成的祝福语，用于构建提示词。
             holiday_name (str): 节日名称，用于构建提示词。
+            cmd_ref_images (list[str], optional): 从指令中直接提供的参考图 (base64-encoded). Defaults to None.
 
         Returns:
             tuple[str | None, str | None]: 成功时返回(图片URL, 图片本地/远程路径)，失败时返回(None, None)。
@@ -713,8 +747,14 @@ class SendBlessingsPlugin(Star):
                 self.logger.warning("未配置OpenRouter API密钥，跳过图片生成。")
                 return None, None
             
-            # 1. 加载参考图（如果已配置）
-            reference_images = await self.load_reference_images()
+            # 1. 确定要使用的参考图
+            # 优先使用从指令传入的参考图
+            if cmd_ref_images:
+                reference_images = cmd_ref_images
+                self.logger.info(f"使用指令中提供的 {len(reference_images)} 张参考图。")
+            else:
+                # 否则，加载配置文件中指定的参考图
+                reference_images = await self.load_reference_images()
             
             # 2. 构建最终的图像生成提示词
             prompt = self.build_reference_prompt(blessing, holiday_name, bool(reference_images))
