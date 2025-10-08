@@ -409,13 +409,14 @@ class SendBlessingsPlugin(Star):
                 except Exception as e:
                     self.logger.warning(f"生成测试图片失败: {e}")
 
-            test_chain = [Comp.Plain(test_blessing)]
+            components = [Comp.Plain(test_blessing)]
             if test_image_path:
-                test_chain.append(Comp.Image.fromFileSystem(test_image_path))
+                components.append(Comp.Image.fromFileSystem(test_image_path))
             else:
                 # 如果图片生成失败，也给一个提示
                 if self.openrouter_api_keys:
-                    test_chain.append(Comp.Plain("\n(测试图片生成失败)"))
+                    components.append(Comp.Plain("\n(测试图片生成失败)"))
+            test_chain = Comp.Chain(components)
 
             success_count = 0
             failed_sessions_info = []
