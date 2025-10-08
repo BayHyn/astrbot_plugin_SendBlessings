@@ -316,22 +316,13 @@ class SendBlessingsPlugin(Star):
     
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("blessings manual")
-    async def manual_bless(self, event: AstrMessageEvent, holiday_name: str = None):
+    async def manual_bless(self, event: AstrMessageEvent, holiday_name: str = "手动测试"):
         """
         [管理员指令] 手动触发一次祝福生成和发送流程（仅用于测试）。
-
-        如果今天不是假期，此指令将无法触发。
+        
+        该指令不再受节假日限制，可随时用于测试。
         """
         try:
-            today = datetime.now().date()
-            today_info = next((h for h in self.holidays if h['date'] == today.isoformat()), None)
-            if not today_info or not today_info['is_holiday']:
-                yield event.plain_result("今天不是假期，无法手动触发祝福。")
-                return
-            
-            if holiday_name is None:
-                holiday_name = today_info['holiday_name']
-            
             # 1. 生成祝福语
             blessing = await self.generate_blessing(holiday_name)
             if not blessing:
@@ -344,7 +335,6 @@ class SendBlessingsPlugin(Star):
                 yield event.plain_result("图片生成失败。")
                 return
             
-            # 3. 发送到当前会话
             # 3. 发送到当前会话
             if image_path:
                 yield event.chain_result([Comp.Plain(blessing), Comp.Image.fromFileSystem(image_path)])
