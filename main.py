@@ -373,17 +373,16 @@ class SendBlessingsPlugin(Star):
 
             # 提取参考图
             reference_images_base64 = []
-            if event.message:
-                for component in event.message.chain:
-                    if isinstance(component, Comp.Image):
-                        try:
-                            image_path = await component.get_image_path(self.context)
-                            if image_path:
-                                base64_data = await self.convert_image_to_base64(image_path)
-                                if base64_data:
-                                    reference_images_base64.append(base64_data)
-                        except Exception as e:
-                            self.logger.warning(f"处理指令中的参考图失败: {e}")
+            for component in event.get_messages():
+                if isinstance(component, Comp.Image):
+                    try:
+                        image_path = await component.get_image_path(self.context)
+                        if image_path:
+                            base64_data = await self.convert_image_to_base64(image_path)
+                            if base64_data:
+                                reference_images_base64.append(base64_data)
+                    except Exception as e:
+                        self.logger.warning(f"处理指令中的参考图失败: {e}")
             
             if reference_images_base64:
                 yield event.plain_result(f"已检测到 {len(reference_images_base64)} 张参考图，将用于生成测试图片。")
