@@ -1,17 +1,9 @@
-"""
-- 使用 `chinese_calendar` 库获取指定年份的每一天是否为节假日、工作日或调休日。
-- 使用 `cn_bing_translator` 将节假日名称（如 'National Day'）翻译成中文。
-- 将获取到的全年节假日数据序列化为 JSON 文件进行缓存，避免重复请求。
-- 当缓存数据过时或不存在时，自动重新获取并更新缓存。
-- 提供摘要输出和单日查询功能，方便开发和调试。
-"""
 import datetime
 import json
 import os
 from chinese_calendar import is_holiday, is_workday
 import chinese_calendar as calendar
 from cn_bing_translator import Translator
-import chinese_calendar
 
 # JSON 文件路径，将在调用时动态设置
 JSON_FILE = None

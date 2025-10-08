@@ -7,7 +7,6 @@ import os
 import re
 import uuid
 from datetime import datetime, timedelta
-import glob
 from pathlib import Path
 from astrbot.api import logger
 from astrbot.api.star import StarTools

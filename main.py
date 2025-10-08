@@ -3,12 +3,10 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 import astrbot.api.message_components as Comp
 import asyncio
-import aiohttp
 import aiofiles
 import json
 import os
 import base64
-import binascii
 from datetime import datetime, date, timedelta
 from chinese_calendar import is_holiday, is_workday
 import chinese_calendar as ch_calendar
