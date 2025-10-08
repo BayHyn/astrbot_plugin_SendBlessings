@@ -2,7 +2,6 @@ from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api.platform import MessageType
 from astrbot.api import logger
-from astrbot.api.message import MessageChain
 import astrbot.api.message_components as Comp
 import asyncio
 import aiofiles
@@ -417,7 +416,7 @@ class SendBlessingsPlugin(Star):
                 # 如果图片生成失败，也给一个提示
                 if self.openrouter_api_keys:
                     components.append(Comp.Plain("\n(测试图片生成失败)"))
-            test_chain = MessageChain(components)
+            test_chain = Comp.MessageChain(components)
 
             success_count = 0
             failed_sessions_info = []
