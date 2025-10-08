@@ -1,5 +1,5 @@
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, register, MessageType
 from astrbot.api import logger
 import astrbot.api.message_components as Comp
 import asyncio
@@ -344,11 +344,11 @@ class SendBlessingsPlugin(Star):
                 return
             
             # 3. 发送到当前会话
-            chain = [
-                Comp.Plain(blessing),
-                Comp.Image.fromFileSystem(image_path) if image_path else Comp.Plain("图片生成失败")
-            ]
-            yield event.chain_result(chain)
+            # 3. 发送到当前会话
+            if image_path:
+                yield event.chain_result([Comp.Plain(blessing), Comp.Image.fromFileSystem(image_path)])
+            else:
+                yield event.plain_result(f"{blessing}\n(图片生成失败)")
             yield event.plain_result("手动祝福已发送到当前会话！")
         except Exception as e:
             self.logger.error(f"手动祝福失败: {e}")
@@ -433,7 +433,7 @@ class SendBlessingsPlugin(Star):
             for friend in friend_list:
                 user_id = friend.get('user_id')
                 if not user_id: continue
-                session_str = f"aiocqhttp:2:{user_id}"
+                session_str = f"aiocqhttp:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
@@ -447,7 +447,7 @@ class SendBlessingsPlugin(Star):
             for group in group_list:
                 group_id = group.get('group_id')
                 if not group_id: continue
-                session_str = f"aiocqhttp:1:{group_id}"
+                session_str = f"aiocqhttp:{MessageType.GROUP_MESSAGE.value}:{group_id}"
                 try:
                     await self.context.send_message(session_str, test_chain)
                     success_count += 1
