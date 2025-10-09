@@ -246,6 +246,9 @@ class SendBlessingsPlugin(Star):
         self.nap_server_address = config.get("nap_server_address", "localhost")
         self.nap_server_port = config.get("nap_server_port", 3658)
         
+        # 加载测试目标配置
+        self.test_targets = config.get("test_targets", {})
+        
         # 加载参考图相关配置
         self.reference_images_config = config.get("reference_images", {})
         self.reference_images_enabled = self.reference_images_config.get("enabled", False)
@@ -277,8 +280,13 @@ class SendBlessingsPlugin(Star):
         except Exception as e:
             self.logger.error(f"插件初始化失败: {e}")
 
+    @filter.command_group("blessings")
+    def blessings(self):
+        """节假日祝福插件管理指令"""
+        pass
+
+    @blessings.command("reload")
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @filter.command("blessings reload")
     async def reload_holidays(self, event: AstrMessageEvent):
         """
         [管理员指令] 重新加载节假日数据。
@@ -290,8 +298,8 @@ class SendBlessingsPlugin(Star):
             self.logger.error(f"重新加载节假日数据失败: {e}")
             yield event.plain_result(f"重新加载失败: {str(e)}")
     
+    @blessings.command("check")
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @filter.command("blessings check")
     async def check_today(self, event: AstrMessageEvent):
         """
         [管理员指令] 检查今天的日期状态。
@@ -313,8 +321,8 @@ class SendBlessingsPlugin(Star):
             self.logger.error(f"检查今天节假日状态失败: {e}")
             yield event.plain_result(f"检查失败: {str(e)}")
     
+    @blessings.command("manual")
     @filter.permission_type(filter.PermissionType.ADMIN)
-    @filter.command("blessings manual")
     async def manual_bless(self, event: AstrMessageEvent, holiday_name: str = "手动测试"):
         """
         [管理员指令] 手动触发一次祝福生成和发送流程（仅用于测试）。
@@ -343,6 +351,77 @@ class SendBlessingsPlugin(Star):
         except Exception as e:
             self.logger.error(f"手动祝福失败: {e}")
             yield event.plain_result(f"手动祝福失败: {str(e)}")
+
+    @blessings.command("test")
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    async def test_blessings(self, event: AstrMessageEvent, holiday_name: str = "手动测试"):
+        """
+        [管理员指令] 测试向指定群组和个人发送祝福。
+        
+        Args:
+            holiday_name (str, optional): 要测试的节日名称。默认为 "手动测试"。
+        """
+        try:
+            group_ids = self.test_targets.get("group_ids", [])
+            user_ids = self.test_targets.get("user_ids", [])
+
+            if not group_ids and not user_ids:
+                yield event.plain_result("测试目标未配置。请在插件配置中设置 'test_targets'。")
+                return
+
+            yield event.plain_result(f"开始向 {len(group_ids)} 个群组和 {len(user_ids)} 个用户发送测试祝福...")
+
+            # 1. 生成祝福语和图片
+            blessing = await self.generate_blessing(holiday_name)
+            if not blessing:
+                yield event.plain_result("祝福语生成失败，测试中止。")
+                return
+            
+            image_url, image_path = await self.generate_image(blessing, holiday_name)
+            if not image_url:
+                yield event.plain_result("图片生成失败，测试中止。")
+                return
+
+            # 2. 构建消息链
+            chain = [
+                Comp.Plain(blessing),
+                Comp.Image.fromFileSystem(image_path) if image_path else Comp.Plain("(图片生成失败)")
+            ]
+
+            # 3. 发送消息
+            success_count = 0
+            fail_count = 0
+
+            # 发送到群组
+            for group_id in group_ids:
+                session_str = f"aiocqhttp:{MessageType.GROUP_MESSAGE.value}:{group_id}"
+                try:
+                    await self.context.send_message(session_str, chain)
+                    success_count += 1
+                    self.logger.info(f"测试祝福已发送到群组 {group_id}")
+                    await asyncio.sleep(2) # 减慢发送速度
+                except Exception as e:
+                    fail_count += 1
+                    self.logger.error(f"发送测试祝福到群组 {group_id} 失败: {e}")
+
+            # 发送到用户
+            for user_id in user_ids:
+                session_str = f"aiocqhttp:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                try:
+                    await self.context.send_message(session_str, chain)
+                    success_count += 1
+                    self.logger.info(f"测试祝福已发送到用户 {user_id}")
+                    await asyncio.sleep(2) # 减慢发送速度
+                except Exception as e:
+                    fail_count += 1
+                    self.logger.error(f"发送测试祝福到用户 {user_id} 失败: {e}")
+
+            # 4. 报告结果
+            yield event.plain_result(f"测试完成！\n成功发送: {success_count} 个\n失败: {fail_count} 个")
+
+        except Exception as e:
+            self.logger.error(f"测试祝福指令失败: {e}")
+            yield event.plain_result(f"测试指令执行失败: {str(e)}")
 
     async def load_reference_images(self) -> list[str]:
         """

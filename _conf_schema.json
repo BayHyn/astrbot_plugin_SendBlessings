@@ -48,6 +48,23 @@
         "type": "int",
         "default": 3658
     },
+    "test_targets": {
+        "description": "测试指令发送目标",
+        "type": "object",
+        "hint": "配置/blessings test指令发送祝福消息的目标QQ群和好友",
+        "items": {
+            "group_ids": {
+                "description": "测试群组ID列表",
+                "type": "list",
+                "default": []
+            },
+            "user_ids": {
+                "description": "测试用户ID列表",
+                "type": "list",
+                "default": []
+            }
+        }
+    },
     "reference_images": {
         "description": "参考图生成配置",
         "type": "object",
