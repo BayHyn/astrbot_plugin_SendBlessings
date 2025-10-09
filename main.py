@@ -519,9 +519,12 @@ class SendBlessingsPlugin(Star):
 
         if has_reference:
             return (
-                f"Based on the provided reference image(s), create a new artwork with the following theme: '{base_prompt}'. "
-                f"Maintain the characters, scenes, and elements from the reference image, integrating them into the festive scene. "
-                f"Ensure the final image is harmonious and full of festive spirit. "
+                f"Based on the provided reference image(s), create a new artwork with the theme of '{holiday_name}'. "
+                f"**Task**: Identify the main character(s) in the reference image(s) and place them into a new, festive scene that matches the '{holiday_name}' theme. "
+                f"**Character Modifications**: While preserving the core identity (face, hairstyle) of the character(s), you MUST **change their clothing** to festive attire suitable for '{holiday_name}' (e.g., traditional Chinese outfits for Spring Festival, modern festive wear for New Year). "
+                f"**Actions and Props**: The character(s) should be performing a festive action (e.g., lighting lanterns, setting off fireworks, holding festive items). Add relevant props like red envelopes, lanterns, or holiday food. "
+                f"**Scene**: The background should be a rich, festive environment related to '{holiday_name}'. "
+                f"**Style**: The final image should be a high-quality, harmonious cartoon illustration with a warm and joyful atmosphere. "
                 f"{negative_prompt}"
             )
         else:
