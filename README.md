@@ -49,7 +49,6 @@
 -   `/blessings reload`: 重新从网络获取并加载当前年份的节假日数据。
 -   `/blessings check`: 检查今天是否是节假日的第一天，并返回检查结果。
 -   `/blessings manual [holiday_name]`: 手动触发一次祝福生成和发送流程。如果提供了 `holiday_name`，则使用该名称，否则使用当天的节日名称。该命令会将祝福发送到**当前会话**，主要用于测试。
--   `/blessings test`: 向所有群组/用户发送节日祝福，用于测试。
 
 ## 🛠️ 技术实现
 

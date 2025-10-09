@@ -49,7 +49,6 @@ The core functionality of the plugin is fully automatic; blessings will be sent 
 -   `/blessings reload`: Re-fetches and reloads the current year's holiday data from the network.
 -   `/blessings check`: Checks if today is the first day of a holiday and returns the result.
 -   `/blessings manual [holiday_name]`: Manually triggers the blessing generation and sending process once. If `holiday_name` is provided, it uses that name; otherwise, it uses the day's holiday name. This command sends the blessing to the **current session** and is mainly used for testing.
--   `/blessings test`: Send holiday greetings to all groups/users for testing purposes.
 
 ## 🛠️ Technical Implementation
 
