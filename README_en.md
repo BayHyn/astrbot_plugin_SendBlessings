@@ -6,17 +6,19 @@
 
 ## 📖 Introduction
 
-**SendBlessings** is an automated festival blessings plugin designed for [AstrBot](https://github.com/AstrBotDevs/AstrBot). It can automatically detect Chinese statutory holidays and, on the first day of each holiday, send festive blessings with beautifully generated images to specified QQ groups and friends.
+**SendBlessings** is an automated festival blessings plugin designed for [AstrBot](https://github.com/AstrBotDevs/AstrBot). It automatically detects Chinese statutory holidays and broadcasts festive blessings with beautifully generated images to all friends and groups on the first day of the holiday. Additionally, it sends a warm "back-to-work" reminder on the evening of the last day of the holiday.
 
 The plugin features powerful image generation capabilities, dynamically creating blessing images based on the holiday theme, and supports using LLMs (Large Language Models) to generate personalized blessing messages.
 
 ## ✨ Features
 
 -   **Automatic Holiday Detection**: Automatically fetches and caches statutory holiday information for the current year, requiring no manual intervention.
--   **Scheduled Blessing Sending**: Automatically triggers and sends blessings in the early morning of each statutory holiday.
--   **Dynamic Image Generation**: Utilizes the [OpenRouter](https://openrouter.ai/) API and configurable image generation models (like `Google Gemini`) to dynamically generate unique blessing images for each holiday.
--   **Intelligent Blessing Messages**: Optionally uses the configured LLM to generate more personalized and human-like blessing messages.
--   **Flexible Target Configuration**: Supports configuring separate lists of QQ groups and QQ friends to receive blessings.
+-   **Dual Blessing Modes**:
+    -   **Holiday Start**: Automatically broadcasts blessings to all friends and groups in the early morning of each statutory holiday.
+    -   **Holiday End**: Sends a warm "back-to-work" reminder at a specified time (default: 22:00) on the last day of the holiday.
+-   **Dynamic Image Generation**: Utilizes the [OpenRouter](https://openrouter.ai/) API and configurable image generation models (like `Google Gemini`) to dynamically generate unique images for each blessing scenario.
+-   **Intelligent Blessing Messages**: Optionally uses the configured LLM to generate more personalized and human-like blessing messages for both scenarios.
+-   **Broadcast Mode**: All blessings are automatically sent to all groups and friends the bot is in, requiring no tedious configuration.
 -   **Reference Image Support**: Supports using local images as style or content references when generating images.
 -   **Administrator Tools**: Provides a rich set of administrator commands for testing, reloading data, and manually sending blessings.
 
@@ -39,6 +41,9 @@ The plugin features powerful image generation capabilities, dynamically creating
     -   `enabled`: Whether to enable the reference image feature (Boolean, default: `false`).
     -   `image_paths`: List of reference image file paths (List). Paths are relative to the plugin directory.
     -   `max_images`: Maximum number of reference images to use (Integer, default: `3`).
+-   `end_of_holiday_blessing`: Configuration for the end-of-holiday reminder (Object).
+    -   `enabled`: Whether to enable the end-of-holiday reminder feature (Boolean, default: `true`).
+    -   `send_time`: Daily sending time (String, format "HH:MM", default: `"22:00"`).
 
 ## 🚀 Usage
 
@@ -48,7 +53,8 @@ The core functionality of the plugin is fully automatic; blessings will be sent 
 
 -   `/blessings reload`: Re-fetches and reloads the current year's holiday data from the network.
 -   `/blessings check`: Checks if today is the first day of a holiday and returns the result.
--   `/blessings manual [holiday_name]`: Manually triggers the blessing generation and sending process once. If `holiday_name` is provided, it uses that name; otherwise, it uses the day's holiday name. This command sends the blessing to the **current session** and is mainly used for testing.
+-   `/blessings manual [holiday_name]`: Manually triggers the blessing generation and sending process once. If `holiday_name` is provided, it uses that name. This command sends the blessing to the **current session** and is mainly used for testing.
+-   `/blessings test [holiday_name]`: Manually broadcasts a test blessing to all friends and groups.
 
 ## 🛠️ Technical Implementation
 
@@ -58,7 +64,6 @@ The core functionality of the plugin is fully automatic; blessings will be sent 
 -   **File Handling**: Generated images are saved in the `data/SendBlessings/images` directory, and expired files are automatically cleaned up. If NAP service is configured, images are sent to the protocol client server for processing.
 
 ## 🗺️ Future Plans
-- [ ] Custom whitelist for groups/friends to send messages to
 - [ ] Support for more holidays (e.g., Western holidays)
 - [ ] Support for more image generation models
 
