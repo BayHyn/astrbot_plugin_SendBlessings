@@ -114,7 +114,8 @@ def get_year_holidays(year: int) -> list:
                 'is_holiday': is_hol,
                 'is_workday': is_work,
                 'is_in_lieu': is_lieu,
-                'is_first_day': False
+                'is_first_day': False,
+                'is_last_day': False
             }
             
             if on_holiday and holiday_name:
@@ -139,11 +140,17 @@ def get_year_holidays(year: int) -> list:
             # 出错时添加默认记录以保证数据完整性
             holidays.append({
                 'date': current_date.isoformat(), 'holiday_name': '', 'is_holiday': False,
-                'is_workday': True, 'is_in_lieu': False, 'is_first_day': False
+                'is_workday': True, 'is_in_lieu': False, 'is_first_day': False, 'is_last_day': False
             })
         
         current_date += timedelta(days=1)
     
+    # 从后向前遍历，标记假期的最后一天
+    for i in range(len(holidays) - 1, -1, -1):
+        # 当前是假期，并且是最后一天或者后一天不是假期
+        if holidays[i]['is_holiday'] and (i == len(holidays) - 1 or not holidays[i+1]['is_holiday']):
+            holidays[i]['is_last_day'] = True
+            
     return holidays
 
 
@@ -212,7 +219,7 @@ def check_single_date(date_input: date, holidays: list):
     logger.info(f"查询结果: 在 {date_input.year} 年的记录中未找到 {date_input}。")
 
 
-@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.0.6")
+@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.0.7")
 class SendBlessingsPlugin(Star):
     """
     自动发送节假日祝福插件。
@@ -257,6 +264,9 @@ class SendBlessingsPlugin(Star):
         
         self.holidays = []
         self.logger = logger
+
+        # 加载假期结束提醒配置
+        self.end_of_holiday_config = config.get("end_of_holiday_blessing", {})
         
         # 在后台启动异步初始化任务
         asyncio.create_task(self.initialize())
@@ -276,6 +286,11 @@ class SendBlessingsPlugin(Star):
             
             # 启动每日祝福检查的后台循环任务
             asyncio.create_task(self.daily_blessing_checker())
+            
+            # 启动假期结束提醒的后台任务
+            if self.end_of_holiday_config.get("enabled", False):
+                asyncio.create_task(self.end_of_holiday_checker())
+
             self.logger.info("节假日祝福插件初始化完成。")
         except Exception as e:
             self.logger.error(f"插件初始化失败: {e}")
@@ -745,3 +760,123 @@ class SendBlessingsPlugin(Star):
         except Exception as e:
             self.logger.error(f"生成图片过程中发生未知错误: {e}")
             return None, None
+
+    async def generate_end_of_holiday_blessing(self, holiday_name: str) -> str:
+        """
+        生成假期结束的祝福语。
+
+        Args:
+            holiday_name (str): 节日名称。
+
+        Returns:
+            str: 生成的祝福语。
+        """
+        try:
+            # 尝试使用LLM生成
+            try:
+                provider = self.context.get_using_provider()
+                if provider:
+                    prompt = f"为“{holiday_name}”假期的最后一天晚上，生成一段简短温馨的中文祝福语（50-100字）。内容应包含对假期的回顾，并鼓励大家以饱满的热情迎接接下来的工作和生活。"
+                    
+                    resp = await provider.text_chat(
+                        prompt=prompt,
+                        system_prompt="你是一个善于鼓励和给予温暖祝福的AI助手。你的回答应该只包含祝福语文本本身，不要添加任何额外的解释或引言。"
+                    )
+                    
+                    if resp and resp.completion_text:
+                        blessing = resp.completion_text.strip()
+                        if blessing and len(blessing) > 10:
+                            self.logger.info(f"成功使用LLM为 {holiday_name} 假期结束生成祝福语。")
+                            return blessing
+            except Exception as e:
+                self.logger.warning(f"LLM生成假期结束祝福语失败，将使用预设模板: {e}")
+
+            # LLM失败或未配置，回退到模板
+            return f"{holiday_name}假期即将结束，希望您度过了一个愉快而充实的时光！让我们整理好心情，带着满满的能量和美好的回忆，迎接新的挑战。祝您在未来的工作和生活中一切顺利，天天开心！"
+
+        except Exception as e:
+            self.logger.error(f"生成假期结束祝福语时发生未知错误: {e}")
+            return "假期即将结束，祝您未来一切顺利！"
+
+    async def end_of_holiday_checker(self):
+        """
+        每日在指定时间检查是否为假期最后一天，并发送祝福。
+        """
+        self.logger.info("假期结束提醒任务已启动。")
+        while True:
+            try:
+                now = datetime.now()
+                send_time_str = self.end_of_holiday_config.get("send_time", "22:00")
+                hour, minute = map(int, send_time_str.split(':'))
+                
+                send_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                
+                if now > send_time:
+                    send_time += timedelta(days=1)
+                
+                wait_seconds = (send_time - now).total_seconds()
+                self.logger.info(f"下一次假期结束检查将在 {send_time.strftime('%Y-%m-%d %H:%M:%S')} 进行，等待 {wait_seconds:.0f} 秒。")
+                await asyncio.sleep(wait_seconds)
+
+                today = datetime.now().date()
+                today_info = next((h for h in self.holidays if h['date'] == today.isoformat()), None)
+
+                if today_info and today_info['is_last_day']:
+                    holiday_name = today_info['holiday_name']
+                    self.logger.info(f"检测到假期最后一天：{holiday_name}，准备发送结束提醒...")
+
+                    # 1. 生成祝福语
+                    blessing = await self.generate_end_of_holiday_blessing(holiday_name)
+                    
+                    # 2. 生成图片
+                    image_url, image_path = await self.generate_image(blessing, holiday_name)
+                    if not image_url:
+                        self.logger.error("假期结束提醒的图片生成失败，将只发送文字。")
+
+                    # 3. 构建消息链
+                    chain = [Comp.Plain(blessing)]
+                    if image_path:
+                        chain.append(Comp.Image.fromFileSystem(image_path))
+                    else:
+                        chain.append(Comp.Plain("\n(图片生成失败)"))
+
+                    # 4. 发送到目标
+                    targets = self.end_of_holiday_config.get("targets", {})
+                    group_ids = targets.get("group_ids", [])
+                    user_ids = targets.get("user_ids", [])
+
+                    if not group_ids and not user_ids:
+                        self.logger.warning("未配置假期结束提醒的发送目标，跳过发送。")
+                        continue
+
+                    sent_count = 0
+                    # 发送到群组
+                    for group_id in group_ids:
+                        session_str = f"aiocqhttp:{MessageType.GROUP_MESSAGE.value}:{group_id}"
+                        try:
+                            await self.context.send_message(session_str, chain)
+                            sent_count += 1
+                            self.logger.info(f"假期结束提醒已发送到群组 {group_id}")
+                            await asyncio.sleep(3)
+                        except Exception as e:
+                            self.logger.error(f"发送假期结束提醒到群组 {group_id} 失败: {e}")
+                    
+                    # 发送到用户
+                    for user_id in user_ids:
+                        session_str = f"aiocqhttp:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                        try:
+                            await self.context.send_message(session_str, chain)
+                            sent_count += 1
+                            self.logger.info(f"假期结束提醒已发送到用户 {user_id}")
+                            await asyncio.sleep(3)
+                        except Exception as e:
+                            self.logger.error(f"发送假期结束提醒到用户 {user_id} 失败: {e}")
+                    
+                    self.logger.info(f"假期结束提醒已成功发送到 {sent_count} 个会话。")
+
+            except asyncio.CancelledError:
+                self.logger.info("假期结束提醒任务被取消。")
+                break
+            except Exception as e:
+                self.logger.error(f"假期结束提醒任务发生严重错误: {e}")
+                await asyncio.sleep(3600) # 出错时等待1小时后重试

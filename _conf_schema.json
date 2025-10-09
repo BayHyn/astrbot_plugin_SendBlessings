@@ -85,5 +85,38 @@
                 "default": 3
             }
         }
+    },
+    "end_of_holiday_blessing": {
+        "description": "假期结束提醒功能",
+        "type": "object",
+        "hint": "在假期的最后一天晚上发送“收假”提醒和祝福。",
+        "items": {
+            "enabled": {
+                "description": "是否启用此功能",
+                "type": "bool",
+                "default": true
+            },
+            "send_time": {
+                "description": "每日发送时间 (HH:MM)",
+                "type": "string",
+                "default": "22:00"
+            },
+            "targets": {
+                "description": "接收祝福的目标",
+                "type": "object",
+                "items": {
+                    "group_ids": {
+                        "description": "目标群组ID列表",
+                        "type": "list",
+                        "default": []
+                    },
+                    "user_ids": {
+                        "description": "目标用户ID列表",
+                        "type": "list",
+                        "default": []
+                    }
+                }
+            }
+        }
     }
 }
