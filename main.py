@@ -32,7 +32,7 @@ def translate_holiday_name(holiday_name: str) -> str:
     try:
         translator = Translator(toLang='zh-Hans')
         result = translator.process(holiday_name)
-        return result if result and result != holiday_name else holiday_name
+        return result if result else holiday_name
     except Exception as e:
         logger.warning(f"翻译节日名称 '{holiday_name}' 失败: {e}")
         return holiday_name
@@ -81,7 +81,7 @@ def save_holidays_to_json(year: int, holidays: list, json_file: str):
         logger.error(f"保存节假日数据到 {json_file} 失败: {e}")
 
 
-def get_year_holidays(year: int, json_file: str = None) -> list:
+def get_year_holidays(year: int) -> list:
     """
     获取指定年份的完整节假日信息。
 
@@ -90,7 +90,6 @@ def get_year_holidays(year: int, json_file: str = None) -> list:
 
     Args:
         year (int): 要查询的年份。
-        json_file (str, optional): 仅用于传递，无实际作用。
 
     Returns:
         list: 包含全年每一天详细信息的字典列表。
@@ -166,7 +165,7 @@ def get_current_year_holidays(json_file: str = None) -> list:
         return saved_holidays
     else:
         logger.info(f"未找到 {current_year} 年的缓存或数据已过时，正在重新获取...")
-        holidays = get_year_holidays(current_year, json_file)
+        holidays = get_year_holidays(current_year)
         save_holidays_to_json(current_year, holidays, json_file)
         return holidays
 
@@ -345,124 +344,6 @@ class SendBlessingsPlugin(Star):
             self.logger.error(f"手动祝福失败: {e}")
             yield event.plain_result(f"手动祝福失败: {str(e)}")
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
-    @filter.command("blessings test")
-    async def test_target_sessions(self, event: AstrMessageEvent, custom_text: str = None):
-        """
-        [管理员指令] 向所有已连接的群组和好友发送一条测试消息，以验证广播功能。
-        
-        支持在指令后附加自定义文本作为测试消息内容。
-        支持在消息中附带图片，作为图像生成的参考。
-
-        用法:
-        - /blessings test
-        - /blessings test 这是自定义的测试消息
-        - /blessings test [并附带一张或多张图片]
-        """
-        try:
-            yield event.plain_result("正在开始广播功能测试... 此功能仅为 NapCatQQ 设计，请确保您正在使用 aiocqhttp 适配器。")
-
-            # 提取参考图
-            reference_images_base64 = []
-            for component in event.get_messages():
-                if isinstance(component, Comp.Image):
-                    try:
-                        image_path = await component.get_image_path(self.context)
-                        if image_path:
-                            base64_data = await self.convert_image_to_base64(image_path)
-                            if base64_data:
-                                reference_images_base64.append(base64_data)
-                    except Exception as e:
-                        self.logger.warning(f"处理指令中的参考图失败: {e}")
-            
-            if reference_images_base64:
-                yield event.plain_result(f"已检测到 {len(reference_images_base64)} 张参考图，将用于生成测试图片。")
-
-            platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
-            if not platform or not hasattr(platform, "get_client"):
-                yield event.plain_result("错误：无法获取 aiocqhttp 平台适配器。测试中止。")
-                return
-
-            client = platform.get_client()
-            if not client:
-                yield event.plain_result("无法获取 aiocqhttp 客户端实例。")
-                return
-
-            # 获取好友和群组列表
-            friend_list = await client.api.call_action("get_friend_list")
-            group_list = await client.api.call_action("get_group_list")
-
-            if not friend_list and not group_list:
-                yield event.plain_result("未能获取到任何好友或群组列表。")
-                return
-
-            test_blessing = custom_text if custom_text else "🎉 这是一条广播功能测试消息。如果您收到此消息，说明插件可以正常向您发送祝福！"
-            
-            test_image_url, test_image_path = None, None
-            if self.openrouter_api_keys:
-                try:
-                    test_image_url, test_image_path = await self.generate_image(
-                        blessing=test_blessing,
-                        holiday_name="测试",
-                        cmd_ref_images=reference_images_base64
-                    )
-                except Exception as e:
-                    self.logger.warning(f"生成测试图片失败: {e}")
-
-            components = [Comp.Plain(test_blessing)]
-            if test_image_path:
-                components.append(Comp.Image.fromFileSystem(test_image_path))
-            else:
-                # 如果图片生成失败，也给一个提示
-                if self.openrouter_api_keys:
-                    components.append(Comp.Plain("\n(测试图片生成失败)"))
-            test_chain = Comp.MessageChain(components)
-
-            success_count = 0
-            failed_sessions_info = []
-            
-            # 发送到所有好友
-            for friend in friend_list:
-                user_id = friend.get('user_id')
-                if not user_id: continue
-                session_str = f"aiocqhttp:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
-                try:
-                    await self.context.send_message(session_str, test_chain)
-                    success_count += 1
-                    self.logger.info(f"测试消息已发送到用户 {user_id}")
-                    await asyncio.sleep(1) # 避免发送过快
-                except Exception as e:
-                    failed_sessions_info.append(f"用户 {user_id} (原因: {e})")
-                    self.logger.error(f"发送测试消息到用户 {user_id} 失败: {e}")
-
-            # 发送到所有群组
-            for group in group_list:
-                group_id = group.get('group_id')
-                if not group_id: continue
-                session_str = f"aiocqhttp:{MessageType.GROUP_MESSAGE.value}:{group_id}"
-                try:
-                    await self.context.send_message(session_str, test_chain)
-                    success_count += 1
-                    self.logger.info(f"测试消息已发送到群组 {group_id}")
-                    await asyncio.sleep(1) # 避免发送过快
-                except Exception as e:
-                    failed_sessions_info.append(f"群组 {group_id} (原因: {e})")
-                    self.logger.error(f"发送测试消息到群组 {group_id} 失败: {e}")
-
-            total_targets = len(friend_list) + len(group_list)
-            result_message = f"测试完成！共扫描到 {total_targets} 个目标。\n✅ 成功发送: {success_count} 个会话\n"
-            if failed_sessions_info:
-                result_message += f"❌ 发送失败: {len(failed_sessions_info)} 个会话\n"
-                result_message += f"失败详情: {', '.join(failed_sessions_info[:3])}"
-                if len(failed_sessions_info) > 3:
-                    result_message += "..."
-
-            yield event.plain_result(result_message)
-
-        except Exception as e:
-            self.logger.error(f"测试目标会话失败: {e}")
-            yield event.plain_result(f"测试失败: {str(e)}")
-
     async def load_reference_images(self) -> list[str]:
         """
         加载并转换配置文件中指定的参考图片为base64格式。
@@ -625,7 +506,7 @@ class SendBlessingsPlugin(Star):
                     for friend in friend_list:
                         user_id = friend.get('user_id')
                         if not user_id: continue
-                        session_str = f"aiocqhttp:2:{user_id}"
+                        session_str = f"aiocqhttp:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
@@ -638,7 +519,7 @@ class SendBlessingsPlugin(Star):
                     for group in group_list:
                         group_id = group.get('group_id')
                         if not group_id: continue
-                        session_str = f"aiocqhttp:1:{group_id}"
+                        session_str = f"aiocqhttp:{MessageType.GROUP_MESSAGE.value}:{group_id}"
                         try:
                             await self.context.send_message(session_str, chain)
                             sent_count += 1
@@ -656,7 +537,7 @@ class SendBlessingsPlugin(Star):
                 if today.month == 12 and today.day == 31:
                     next_year = today.year + 1
                     self.logger.info(f"正在预加载 {next_year} 年的节假日数据...")
-                    self.holidays = get_year_holidays(next_year, self.json_file)
+                    self.holidays = get_year_holidays(next_year)
                     save_holidays_to_json(next_year, self.holidays, self.json_file)
                 
             except Exception as e:
