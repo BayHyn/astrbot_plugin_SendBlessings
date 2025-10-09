@@ -1,14 +1,16 @@
 import datetime
 import json
 import os
+import asyncio
 from chinese_calendar import is_holiday, is_workday
 import chinese_calendar as calendar
 from cn_bing_translator import Translator
+from astrbot.api import logger
 
 # JSON 文件路径，将在调用时动态设置
 JSON_FILE = None
 
-def translate_holiday_name(holiday_name: str) -> str:
+async def translate_holiday_name(holiday_name: str) -> str:
     """
     使用必应翻译将英文的节假日名称翻译成中文。
 
@@ -22,11 +24,11 @@ def translate_holiday_name(holiday_name: str) -> str:
         return ''
     try:
         translator = Translator(toLang='zh-Hans')
-        result = translator.process(holiday_name)
-        # 确保翻译结果有效
+        # 在单独的线程中运行同步IO操作
+        result = await asyncio.to_thread(translator.process, holiday_name)
         return result if result and result != holiday_name else holiday_name
     except Exception as e:
-        print(f"警告: 翻译节日名称 '{holiday_name}' 失败: {e}")
+        logger.warning(f"警告: 翻译节日名称 '{holiday_name}' 失败: {e}")
         return holiday_name
 
 def load_holidays_from_json(json_file: str) -> tuple[int | None, list]:
@@ -47,7 +49,7 @@ def load_holidays_from_json(json_file: str) -> tuple[int | None, list]:
                 data = json.load(f)
                 return data.get('year'), data.get('holidays', [])
         except (json.JSONDecodeError, IOError) as e:
-            print(f"错误: 加载节假日数据失败: {e}")
+            logger.error(f"错误: 加载节假日数据失败: {e}")
             return None, []
     return None, []
 
@@ -69,11 +71,11 @@ def save_holidays_to_json(year: int, holidays: list, json_file: str):
     try:
         with open(json_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"节假日数据已成功保存到 {json_file}")
+        logger.info(f"节假日数据已成功保存到 {json_file}")
     except IOError as e:
-        print(f"错误: 保存节假日数据失败: {e}")
+        logger.error(f"错误: 保存节假日数据失败: {e}")
 
-def get_year_holidays(year: int, json_file: str = None) -> list:
+async def get_year_holidays(year: int, json_file: str = None) -> list:
     """
     获取指定年份全年的节假日详细信息。
 
@@ -93,7 +95,7 @@ def get_year_holidays(year: int, json_file: str = None) -> list:
     current_date = start_date
     prev_holiday_name = None
 
-    print(f"\n正在获取 {year} 年的节假日信息...")
+    logger.info(f"\n正在获取 {year} 年的节假日信息...")
     while current_date <= end_date:
         try:
             on_holiday, holiday_name = calendar.get_holiday_detail(current_date)
@@ -111,29 +113,29 @@ def get_year_holidays(year: int, json_file: str = None) -> list:
             }
             
             if on_holiday and holiday_name:
-                translated_name = translate_holiday_name(holiday_name)
+                translated_name = await translate_holiday_name(holiday_name)
                 holiday_info['holiday_name'] = translated_name
                 
                 # 检测是否为连续假期的第一天
-                if current_date == start_date or len(holidays) == 0 or not holidays[-1]['is_holiday'] or holidays[-1]['holiday_name'] != translated_name:
+                if not holidays or not holidays[-1]['is_holiday'] or holidays[-1]['holiday_name'] != translated_name:
                     holiday_info['is_first_day'] = True
                 
                 # 优化控制台输出，只在假期第一天打印完整信息
                 if translated_name != prev_holiday_name:
-                    print(f"{current_date}: 是节假日 - {translated_name}")
+                    logger.info(f"{current_date}: 是节假日 - {translated_name}")
                     if is_lieu:
-                        print(f"  -> (调休)")
+                        logger.info(f"  -> (调休)")
                     prev_holiday_name = translated_name
             
             holidays.append(holiday_info)
         except Exception as e:
-            print(f"警告: 处理日期 {current_date} 时出错: {e}")
+            logger.warning(f"警告: 处理日期 {current_date} 时出错: {e}")
         
         current_date += datetime.timedelta(days=1)
     
     return holidays
 
-def get_current_year_holidays(json_file: str = None) -> list:
+async def get_current_year_holidays(json_file: str = None) -> list:
     """
     获取当前年份的节假日数据，优先从缓存加载。
 
@@ -150,11 +152,11 @@ def get_current_year_holidays(json_file: str = None) -> list:
     saved_year, saved_holidays = load_holidays_from_json(json_file)
 
     if saved_year == current_year and saved_holidays:
-        print(f"已从缓存加载 {current_year} 年节假日数据，共 {len(saved_holidays)} 条记录。")
+        logger.info(f"已从缓存加载 {current_year} 年节假日数据，共 {len(saved_holidays)} 条记录。")
         return saved_holidays
     else:
-        print(f"未找到 {current_year} 年的缓存数据或数据已过时，正在重新获取...")
-        holidays = get_year_holidays(current_year, json_file)
+        logger.info(f"未找到 {current_year} 年的缓存数据或数据已过时，正在重新获取...")
+        holidays = await get_year_holidays(current_year, json_file)
         save_holidays_to_json(current_year, holidays, json_file)
         return holidays
 
@@ -166,20 +168,20 @@ def print_holidays_summary(holidays: list, year: int):
         holidays (list): 节假日数据列表。
         year (int): 对应的年份。
     """
-    print(f"\n--- {year} 年节假日摘要 ---")
+    logger.info(f"\n--- {year} 年节假日摘要 ---")
     total_days = len(holidays)
     holiday_count = sum(1 for h in holidays if h['is_holiday'])
     workday_count = sum(1 for h in holidays if h['is_workday'])
     lieu_count = sum(1 for h in holidays if h['is_in_lieu'])
     first_day_count = sum(1 for h in holidays if h['is_first_day'])
-    print(f"总天数: {total_days}")
-    print(f"总节假日天数: {holiday_count}")
-    print(f"总工作日天数: {workday_count}")
-    print(f"其中调休日数: {lieu_count}")
-    print(f"假期第一天总数: {first_day_count}")
-    print("--------------------------")
+    logger.info(f"总天数: {total_days}")
+    logger.info(f"总节假日天数: {holiday_count}")
+    logger.info(f"总工作日天数: {workday_count}")
+    logger.info(f"其中调休日数: {lieu_count}")
+    logger.info(f"假期第一天总数: {first_day_count}")
+    logger.info("--------------------------")
 
-def check_single_date(date_input: datetime.date, json_file: str = None):
+async def check_single_date(date_input: datetime.date, json_file: str = None):
     """
     检查并打印单个日期的节假日状态（用于示例和调试）。
 
@@ -188,34 +190,39 @@ def check_single_date(date_input: datetime.date, json_file: str = None):
         json_file (str, optional): 缓存文件的路径。
     """
     # 此函数主要用于演示，直接加载数据
-    holidays = get_current_year_holidays(json_file)
+    holidays = await get_current_year_holidays(json_file)
     
     for h in holidays:
         if h['date'] == date_input.isoformat():
             if h['is_holiday']:
-                print(f"\n查询结果: {date_input} 是假期 - {h['holiday_name']}")
+                logger.info(f"\n查询结果: {date_input} 是假期 - {h['holiday_name']}")
             else:
-                print(f"\n查询结果: {date_input} 是工作日")
+                logger.info(f"\n查询结果: {date_input} 是工作日")
             
             if h['is_in_lieu']:
-                print(f"  -> (调休)")
+                logger.info(f"  -> (调休)")
             return
             
-    print(f"\n查询结果: 在 {date_input.year} 年的记录中未找到 {date_input}。")
+    logger.info(f"\n查询结果: 在 {date_input.year} 年的记录中未找到 {date_input}。")
 
-# 主执行块，当直接运行此脚本时触发
-if __name__ == "__main__":
+async def main():
+    """异步主函数，用于执行脚本逻辑。"""
     # 将JSON文件路径设置为脚本所在目录下的 'holidays.json'
+    global JSON_FILE
     JSON_FILE = os.path.join(os.path.dirname(__file__), 'holidays.json')
     
     # 获取当前年份的节假日数据
-    current_holidays = get_current_year_holidays(JSON_FILE)
+    current_holidays = await get_current_year_holidays(JSON_FILE)
     
     # 打印摘要
     print_holidays_summary(current_holidays, datetime.date.today().year)
     
     # 示例：检查今天的日期
-    check_single_date(datetime.date.today(), JSON_FILE)
+    await check_single_date(datetime.date.today(), JSON_FILE)
     
     # 示例：检查一个指定的日期
-    check_single_date(datetime.date(datetime.date.today().year, 10, 1), JSON_FILE)
+    await check_single_date(datetime.date(datetime.date.today().year, 10, 1), JSON_FILE)
+
+# 主执行块，当直接运行此脚本时触发
+if __name__ == "__main__":
+    asyncio.run(main())

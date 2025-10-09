@@ -1,5 +1,4 @@
 aiohttp
 chinesecalendar
 cn_bing_translator
-requests
 aiofiles

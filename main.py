@@ -12,12 +12,13 @@ from datetime import datetime, date, timedelta
 from chinese_calendar import is_holiday, is_workday
 import chinese_calendar as ch_calendar
 from cn_bing_translator import Translator
+from pathlib import Path
 from .utils.ttp import generate_image_openrouter
 from .utils.file_send_server import send_file
 
 
 
-def translate_holiday_name(holiday_name: str) -> str:
+async def translate_holiday_name(holiday_name: str) -> str:
     """
     使用必应翻译将英文节假日名称翻译为中文。
 
@@ -30,8 +31,9 @@ def translate_holiday_name(holiday_name: str) -> str:
     if not holiday_name:
         return ''
     try:
+        # 使用 to_thread 在单独的线程中运行同步的翻译函数
         translator = Translator(toLang='zh-Hans')
-        result = translator.process(holiday_name)
+        result = await asyncio.to_thread(translator.process, holiday_name)
         return result if result else holiday_name
     except Exception as e:
         logger.warning(f"翻译节日名称 '{holiday_name}' 失败: {e}")
@@ -81,7 +83,7 @@ def save_holidays_to_json(year: int, holidays: list, json_file: str):
         logger.error(f"保存节假日数据到 {json_file} 失败: {e}")
 
 
-def get_year_holidays(year: int) -> list:
+async def get_year_holidays(year: int) -> list:
     """
     获取指定年份的完整节假日信息。
 
@@ -119,11 +121,11 @@ def get_year_holidays(year: int) -> list:
             }
             
             if on_holiday and holiday_name:
-                translated_name = translate_holiday_name(holiday_name)
+                translated_name = await translate_holiday_name(holiday_name)
                 holiday_info['holiday_name'] = translated_name
                 
-                # 检测是否为连续假期的第一天
-                if current_date == start_date or not holidays or not holidays[-1]['is_holiday'] or holidays[-1]['holiday_name'] != translated_name:
+                # 检测是否为连续假期的第一天 (简化逻辑)
+                if not holidays or not holidays[-1]['is_holiday'] or holidays[-1]['holiday_name'] != translated_name:
                     holiday_info['is_first_day'] = True
                 
                 # 优化日志输出，仅在假期变化时打印
@@ -154,7 +156,7 @@ def get_year_holidays(year: int) -> list:
     return holidays
 
 
-def get_current_year_holidays(json_file: str = None) -> list:
+async def get_current_year_holidays(json_file: str = None) -> list:
     """
     获取当前年份的节假日数据，优先从缓存加载。
 
@@ -172,7 +174,7 @@ def get_current_year_holidays(json_file: str = None) -> list:
         return saved_holidays
     else:
         logger.info(f"未找到 {current_year} 年的缓存或数据已过时，正在重新获取...")
-        holidays = get_year_holidays(current_year)
+        holidays = await get_year_holidays(current_year)
         save_holidays_to_json(current_year, holidays, json_file)
         return holidays
 
@@ -237,11 +239,11 @@ class SendBlessingsPlugin(Star):
         super().__init__(context)
         self.config = config
         
-        # 确保插件数据目录存在
-        data_dir = self.context.get_config().get('data_dir', 'data')
-        os.makedirs(data_dir, exist_ok=True)
+        # 使用 context.get_data_dir() 获取插件专属数据目录
+        self.plugin_data_dir = self.context.get_data_dir()
+        self.plugin_data_dir.mkdir(exist_ok=True)
         
-        self.json_file = os.path.join(data_dir, self.config.get('holidays_file', 'holidays.json'))
+        self.json_file = self.plugin_data_dir / self.config.get('holidays_file', 'holidays.json')
         
         # 加载图像生成 (OpenRouter) 相关配置
         self.openrouter_api_keys = config.get("openrouter_api_keys", [])
@@ -279,7 +281,7 @@ class SendBlessingsPlugin(Star):
                 return
             
             # 加载或获取当前年份的节假日数据
-            self.holidays = get_current_year_holidays(self.json_file)
+            self.holidays = await get_current_year_holidays(self.json_file)
             print_holidays_summary(self.holidays, datetime.now().year)
             
             # 启动每日祝福检查的后台循环任务
@@ -305,7 +307,7 @@ class SendBlessingsPlugin(Star):
         [管理员指令] 重新加载节假日数据。
         """
         try:
-            self.holidays = get_current_year_holidays(self.json_file)
+            self.holidays = await get_current_year_holidays(self.json_file)
             yield event.plain_result(f"节假日数据已重新加载，共 {len(self.holidays)} 条记录。")
         except Exception as e:
             self.logger.error(f"重新加载节假日数据失败: {e}")
@@ -407,27 +409,39 @@ class SendBlessingsPlugin(Star):
 
             # 发送到群组
             for group_id in group_ids:
-                session_str = f"aiocqhttp:{MessageType.GROUP_MESSAGE.value}:{group_id}"
-                try:
-                    await self.context.send_message(session_str, chain)
-                    success_count += 1
-                    self.logger.info(f"测试祝福已发送到群组 {group_id}")
-                    await asyncio.sleep(2) # 减慢发送速度
-                except Exception as e:
+                sent_on_any_platform = False
+                for platform in self.context.platform_manager.get_insts():
+                    session_str = f"{platform.meta.name}:{MessageType.GROUP_MESSAGE.value}:{group_id}"
+                    try:
+                        if await self.context.send_message(session_str, chain):
+                            success_count += 1
+                            self.logger.info(f"测试祝福已发送到群组 {group_id} (平台: {platform.meta.name})")
+                            await asyncio.sleep(2)
+                            sent_on_any_platform = True
+                            break
+                    except Exception as e:
+                        self.logger.warning(f"尝试通过平台 {platform.meta.name} 发送测试祝福到群组 {group_id} 失败: {e}")
+                if not sent_on_any_platform:
                     fail_count += 1
-                    self.logger.error(f"发送测试祝福到群组 {group_id} 失败: {e}")
+                    self.logger.error(f"发送测试祝福到群组 {group_id} 失败: 所有平台都无法发送。")
 
             # 发送到用户
             for user_id in user_ids:
-                session_str = f"aiocqhttp:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
-                try:
-                    await self.context.send_message(session_str, chain)
-                    success_count += 1
-                    self.logger.info(f"测试祝福已发送到用户 {user_id}")
-                    await asyncio.sleep(2) # 减慢发送速度
-                except Exception as e:
+                sent_on_any_platform = False
+                for platform in self.context.platform_manager.get_insts():
+                    session_str = f"{platform.meta.name}:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                    try:
+                        if await self.context.send_message(session_str, chain):
+                            success_count += 1
+                            self.logger.info(f"测试祝福已发送到用户 {user_id} (平台: {platform.meta.name})")
+                            await asyncio.sleep(2)
+                            sent_on_any_platform = True
+                            break
+                    except Exception as e:
+                        self.logger.warning(f"尝试通过平台 {platform.meta.name} 发送测试祝福到用户 {user_id} 失败: {e}")
+                if not sent_on_any_platform:
                     fail_count += 1
-                    self.logger.error(f"发送测试祝福到用户 {user_id} 失败: {e}")
+                    self.logger.error(f"发送测试祝福到用户 {user_id} 失败: 所有平台都无法发送。")
 
             # 4. 报告结果
             yield event.plain_result(f"测试完成！\n成功发送: {success_count} 个\n失败: {fail_count} 个")
@@ -553,10 +567,20 @@ class SendBlessingsPlugin(Star):
         """
         每日检查并向所有群组和好友发送祝福的核心后台任务。
         """
+        self.logger.info("每日祝福检查任务已启动。")
         while True:
             try:
-                # 每天检查一次
-                await asyncio.sleep(3600 * 24)
+                # --- 精确计算到第二天凌晨的时间 ---
+                now = datetime.now()
+                # 设置目标时间为第二天的 00:05
+                tomorrow = now.date() + timedelta(days=1)
+                target_time = datetime.combine(tomorrow, datetime.min.time()).replace(hour=0, minute=5)
+                wait_seconds = (target_time - now).total_seconds()
+                
+                self.logger.info(f"下一次每日祝福检查将在 {target_time.strftime('%Y-%m-%d %H:%M:%S')} 进行，等待 {wait_seconds:.0f} 秒。")
+                await asyncio.sleep(wait_seconds)
+                # --- --------------------------- ---
+
                 today = datetime.now().date()
                 today_info = next((h for h in self.holidays if h['date'] == today.isoformat()), None)
                 
@@ -564,80 +588,81 @@ class SendBlessingsPlugin(Star):
                     holiday_name = today_info['holiday_name']
                     self.logger.info(f"检测到假期第一天：{holiday_name}，开始发送祝福...")
                     
-                    # 1. 生成祝福语
                     blessing = await self.generate_blessing(holiday_name)
                     if not blessing:
                         self.logger.error("祝福语生成失败，跳过本次发送。")
                         continue
                     
-                    # 2. 生成图片
                     image_url, image_path = await self.generate_image(blessing, holiday_name)
                     if not image_url:
                         self.logger.error("图片生成失败，跳过本次发送。")
                         continue
                     
-                    # 3. 构建消息链
                     chain = [
                         Comp.Plain(blessing),
                         Comp.Image.fromFileSystem(image_path) if image_path else Comp.Plain("(图片生成失败)")
                     ]
                     
-                    # 4. 发送到所有目标会话
-                    platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
-                    if not platform or not hasattr(platform, "get_client"):
-                        self.logger.error("无法获取 aiocqhttp 平台实例（可能未使用 NapCatQQ），无法发送广播祝福。")
-                        continue
-
-                    client = platform.get_client()
-                    if not client:
-                        self.logger.error("无法获取 aiocqhttp 客户端实例，无法发送广播祝福。")
-                        continue
-                    
-                    friend_list = await client.api.call_action("get_friend_list")
-                    group_list = await client.api.call_action("get_group_list")
-
+                    # --- 平台无关的广播逻辑 ---
                     sent_count = 0
-                    # 发送到好友
-                    for friend in friend_list:
-                        user_id = friend.get('user_id')
-                        if not user_id: continue
-                        session_str = f"aiocqhttp:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                    all_platforms = self.context.platform_manager.get_insts()
+                    for platform in all_platforms:
+                        # 仅针对支持 get_client 和 call_action 的平台 (如 aiocqhttp)
+                        if not hasattr(platform, "get_client") or not platform.get_client() or not hasattr(platform.get_client().api, "call_action"):
+                            continue
+                        
+                        self.logger.info(f"正在通过平台 '{platform.meta.name}' 进行广播...")
+                        client = platform.get_client()
+                        
                         try:
-                            await self.context.send_message(session_str, chain)
-                            sent_count += 1
-                            self.logger.info(f"祝福消息已发送到用户 {user_id}")
-                            await asyncio.sleep(5) # 减慢发送速度
+                            friend_list = await client.api.call_action("get_friend_list")
+                            group_list = await client.api.call_action("get_group_list")
+
+                            # 发送到好友
+                            for friend in friend_list:
+                                user_id = friend.get('user_id')
+                                if not user_id: continue
+                                session_str = f"{platform.meta.name}:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                                try:
+                                    await self.context.send_message(session_str, chain)
+                                    sent_count += 1
+                                    self.logger.info(f"祝福消息已发送到用户 {user_id}")
+                                    await asyncio.sleep(5)
+                                except Exception as e:
+                                    self.logger.error(f"发送祝福到用户 {user_id} 失败: {e}")
+                            
+                            # 发送到群组
+                            for group in group_list:
+                                group_id = group.get('group_id')
+                                if not group_id: continue
+                                session_str = f"{platform.meta.name}:{MessageType.GROUP_MESSAGE.value}:{group_id}"
+                                try:
+                                    await self.context.send_message(session_str, chain)
+                                    sent_count += 1
+                                    self.logger.info(f"祝福消息已发送到群组 {group_id}")
+                                    await asyncio.sleep(5)
+                                except Exception as e:
+                                    self.logger.error(f"发送祝福到群组 {group_id} 失败: {e}")
                         except Exception as e:
-                            self.logger.error(f"发送祝福到用户 {user_id} 失败: {e}")
-                    
-                    # 发送到群组
-                    for group in group_list:
-                        group_id = group.get('group_id')
-                        if not group_id: continue
-                        session_str = f"aiocqhttp:{MessageType.GROUP_MESSAGE.value}:{group_id}"
-                        try:
-                            await self.context.send_message(session_str, chain)
-                            sent_count += 1
-                            self.logger.info(f"祝福消息已发送到群组 {group_id}")
-                            await asyncio.sleep(5) # 减慢发送速度
-                        except Exception as e:
-                            self.logger.error(f"发送祝福到群组 {group_id} 失败: {e}")
+                            self.logger.error(f"从平台 '{platform.meta.name}' 获取好友/群组列表失败: {e}")
 
                     if sent_count > 0:
                         self.logger.info(f"今日({holiday_name})祝福已成功发送到 {sent_count} 个会话。")
                     else:
                         self.logger.warning("未能获取到任何好友或群组，今日祝福未发送。")
                 
-                # 在每年年底预加载下一年的数据
                 if today.month == 12 and today.day == 31:
                     next_year = today.year + 1
                     self.logger.info(f"正在预加载 {next_year} 年的节假日数据...")
-                    self.holidays = get_year_holidays(next_year)
+                    self.holidays = await get_year_holidays(next_year)
                     save_holidays_to_json(next_year, self.holidays, self.json_file)
                 
+            except asyncio.CancelledError:
+                self.logger.info("每日祝福检查任务被取消。")
+                break
             except Exception as e:
                 self.logger.error(f"每日祝福检查任务发生严重错误: {e}")
-                await asyncio.sleep(3600)  # 出错时等待1小时后重试
+                await asyncio.sleep(3600)
     
     async def generate_blessing(self, holiday_name: str) -> str:
         """
@@ -731,6 +756,7 @@ class SendBlessingsPlugin(Star):
                 prompt=prompt,
                 api_keys=self.openrouter_api_keys,
                 model=self.model_name,
+                data_dir=self.plugin_data_dir,
                 input_images=reference_images,
                 max_retry_attempts=self.max_retry_attempts,
                 api_base=self.custom_api_base if self.custom_api_base else None
@@ -839,51 +865,51 @@ class SendBlessingsPlugin(Star):
                         chain.append(Comp.Plain("\n(图片生成失败)"))
 
                     # 4. 发送到所有目标会话
-                    platform = self.context.get_platform(filter.PlatformAdapterType.AIOCQHTTP)
-                    if not platform or not hasattr(platform, "get_client"):
-                        self.logger.error("无法获取 aiocqhttp 平台实例，无法发送广播。")
-                        continue
-
-                    client = platform.get_client()
-                    if not client:
-                        self.logger.error("无法获取 aiocqhttp 客户端实例，无法发送广播。")
-                        continue
-                    
-                    friend_list = await client.api.call_action("get_friend_list")
-                    group_list = await client.api.call_action("get_group_list")
-
-                    if not friend_list and not group_list:
-                        self.logger.warning("未能获取到任何好友或群组，假期结束提醒未发送。")
-                        continue
-
                     sent_count = 0
-                    # 发送到好友
-                    for friend in friend_list:
-                        user_id = friend.get('user_id')
-                        if not user_id: continue
-                        session_str = f"aiocqhttp:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                    all_platforms = self.context.platform_manager.get_insts()
+                    for platform in all_platforms:
+                        if not hasattr(platform, "get_client") or not platform.get_client() or not hasattr(platform.get_client().api, "call_action"):
+                            continue
+                        
+                        self.logger.info(f"正在通过平台 '{platform.meta.name}' 发送假期结束提醒...")
+                        client = platform.get_client()
+                        
                         try:
-                            await self.context.send_message(session_str, chain)
-                            sent_count += 1
-                            self.logger.info(f"假期结束提醒已发送到用户 {user_id}")
-                            await asyncio.sleep(3)
+                            friend_list = await client.api.call_action("get_friend_list")
+                            group_list = await client.api.call_action("get_group_list")
+
+                            # 发送到好友
+                            for friend in friend_list:
+                                user_id = friend.get('user_id')
+                                if not user_id: continue
+                                session_str = f"{platform.meta.name}:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                                try:
+                                    await self.context.send_message(session_str, chain)
+                                    sent_count += 1
+                                    self.logger.info(f"假期结束提醒已发送到用户 {user_id}")
+                                    await asyncio.sleep(3)
+                                except Exception as e:
+                                    self.logger.error(f"发送假期结束提醒到用户 {user_id} 失败: {e}")
+                            
+                            # 发送到群组
+                            for group in group_list:
+                                group_id = group.get('group_id')
+                                if not group_id: continue
+                                session_str = f"{platform.meta.name}:{MessageType.GROUP_MESSAGE.value}:{group_id}"
+                                try:
+                                    await self.context.send_message(session_str, chain)
+                                    sent_count += 1
+                                    self.logger.info(f"假期结束提醒已发送到群组 {group_id}")
+                                    await asyncio.sleep(3)
+                                except Exception as e:
+                                    self.logger.error(f"发送假期结束提醒到群组 {group_id} 失败: {e}")
                         except Exception as e:
-                            self.logger.error(f"发送假期结束提醒到用户 {user_id} 失败: {e}")
-                    
-                    # 发送到群组
-                    for group in group_list:
-                        group_id = group.get('group_id')
-                        if not group_id: continue
-                        session_str = f"aiocqhttp:{MessageType.GROUP_MESSAGE.value}:{group_id}"
-                        try:
-                            await self.context.send_message(session_str, chain)
-                            sent_count += 1
-                            self.logger.info(f"假期结束提醒已发送到群组 {group_id}")
-                            await asyncio.sleep(3)
-                        except Exception as e:
-                            self.logger.error(f"发送假期结束提醒到群组 {group_id} 失败: {e}")
-                    
-                    self.logger.info(f"假期结束提醒已成功发送到 {sent_count} 个会话。")
+                            self.logger.error(f"从平台 '{platform.meta.name}' 获取好友/群组列表失败: {e}")
+
+                    if sent_count > 0:
+                        self.logger.info(f"假期结束提醒已成功发送到 {sent_count} 个会话。")
+                    else:
+                        self.logger.warning("未能获取到任何好友或群组，假期结束提醒未发送。")
 
             except asyncio.CancelledError:
                 self.logger.info("假期结束提醒任务被取消。")
