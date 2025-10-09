@@ -239,9 +239,11 @@ class SendBlessingsPlugin(Star):
         super().__init__(context)
         self.config = config
         
-        # 使用 context.get_data_dir() 获取插件专属数据目录
-        self.plugin_data_dir = self.context.get_data_dir()
-        self.plugin_data_dir.mkdir(exist_ok=True)
+        # 手动构建插件数据目录以实现数据隔离
+        base_data_dir = Path(self.context.get_config().get('data_dir', 'data'))
+        plugin_name = self.context.get_registered_star("SendBlessings").name
+        self.plugin_data_dir = base_data_dir / "plugin_data" / plugin_name
+        self.plugin_data_dir.mkdir(parents=True, exist_ok=True)
         
         self.json_file = self.plugin_data_dir / self.config.get('holidays_file', 'holidays.json')
         
