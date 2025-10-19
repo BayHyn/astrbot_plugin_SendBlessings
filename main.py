@@ -774,14 +774,22 @@ class SendBlessingsPlugin(Star):
             resp = await provider.text_chat(prompt=prompt, system_prompt=system_prompt)
 
             if resp and resp.completion_text:
+                self.logger.debug(f"LLM原始返回: {resp.completion_text}")
                 # 解析LLM返回的JSON
                 try:
-                    # 从Markdown代码块中提取JSON
-                    match = re.search(r'```json\s*([\s\S]+?)\s*```', resp.completion_text)
-                    json_str = match.group(1) if match else resp.completion_text
-                    
-                    llm_translations = json.loads(json_str)
-                    
+                    llm_translations = None
+                    # 尝试直接解析整个响应
+                    try:
+                        llm_translations = json.loads(resp.completion_text)
+                    except json.JSONDecodeError:
+                        # 如果直接解析失败，再尝试从Markdown代码块中提取
+                        match = re.search(r'```json\s*([\s\S]+?)\s*```', resp.completion_text)
+                        if match:
+                            json_str = match.group(1)
+                            llm_translations = json.loads(json_str)
+                        else:
+                            self.logger.warning("LLM返回的既不是有效的JSON，也不在Markdown代码块中。")
+
                     if isinstance(llm_translations, dict):
                         # 更新翻译结果，仅当LLM提供了有效翻译时
                         for name, translated in llm_translations.items():
