@@ -3,6 +3,7 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api.platform import MessageType
 from astrbot.api import logger
 import astrbot.api.message_components as Comp
+import re
 import asyncio
 import aiofiles
 import json
@@ -11,217 +12,12 @@ import base64
 from datetime import datetime, date, timedelta
 from chinese_calendar import is_holiday, is_workday
 import chinese_calendar as ch_calendar
-from cn_bing_translator import Translator
 from pathlib import Path
 from .utils.ttp import generate_image_openrouter
 from .utils.file_send_server import send_file
 
 
-
-async def translate_holiday_name(holiday_name: str) -> str:
-    """
-    使用必应翻译将英文节假日名称翻译为中文。
-
-    Args:
-        holiday_name (str): 英文节假日名称。
-
-    Returns:
-        str: 翻译后的中文名称，失败时返回原名称。
-    """
-    if not holiday_name:
-        return ''
-    try:
-        # 使用 to_thread 在单独的线程中运行同步的翻译函数
-        translator = Translator(toLang='zh-Hans')
-        result = await asyncio.to_thread(translator.process, holiday_name)
-        return result if result else holiday_name
-    except Exception as e:
-        logger.warning(f"翻译节日名称 '{holiday_name}' 失败: {e}")
-        return holiday_name
-
-
-def load_holidays_from_json(json_file: str) -> tuple[int | None, list]:
-    """
-    从JSON文件加载缓存的节假日数据。
-
-    Args:
-        json_file (str): 缓存文件的路径。
-
-    Returns:
-        tuple[int | None, list]: 包含年份和节假日列表的元组，失败则返回 (None, [])。
-    """
-    if json_file is None:
-        json_file = 'holidays.json'
-    if os.path.exists(json_file):
-        try:
-            with open(json_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                return data.get('year'), data.get('holidays', [])
-        except Exception as e:
-            logger.error(f"从 {json_file} 加载节假日数据失败: {e}")
-            return None, []
-    return None, []
-
-
-def save_holidays_to_json(year: int, holidays: list, json_file: str):
-    """
-    将节假日数据保存到JSON文件。
-
-    Args:
-        year (int): 数据对应的年份。
-        holidays (list): 全年的节假日信息列表。
-        json_file (str): 目标JSON文件的路径。
-    """
-    if json_file is None:
-        json_file = 'holidays.json'
-    data = {'year': year, 'holidays': holidays}
-    try:
-        with open(json_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        logger.info(f"节假日数据已保存到 {json_file}")
-    except Exception as e:
-        logger.error(f"保存节假日数据到 {json_file} 失败: {e}")
-
-
-async def get_year_holidays(year: int) -> list:
-    """
-    获取指定年份的完整节假日信息。
-
-    遍历该年的每一天，使用 `chinese_calendar` 库确定日期类型，
-    并标记出每个连续假期的第一天。
-
-    Args:
-        year (int): 要查询的年份。
-
-    Returns:
-        list: 包含全年每一天详细信息的字典列表。
-    """
-    start_date = date(year, 1, 1)
-    end_date = date(year, 12, 31)
-    holidays = []
-    current_date = start_date
-    prev_holiday_name = None
-
-    logger.info(f"正在获取 {year} 年的节假日信息...")
-    while current_date <= end_date:
-        try:
-            on_holiday, holiday_name = ch_calendar.get_holiday_detail(current_date)
-            is_hol = is_holiday(current_date)
-            is_work = is_workday(current_date)
-            is_lieu = ch_calendar.is_in_lieu(current_date)
-            
-            holiday_info = {
-                'date': current_date.isoformat(),
-                'holiday_name': '',
-                'is_holiday': is_hol,
-                'is_workday': is_work,
-                'is_in_lieu': is_lieu,
-                'is_first_day': False,
-                'is_last_day': False
-            }
-            
-            if on_holiday and holiday_name:
-                translated_name = await translate_holiday_name(holiday_name)
-                holiday_info['holiday_name'] = translated_name
-                
-                # 检测是否为连续假期的第一天 (简化逻辑)
-                if not holidays or not holidays[-1]['is_holiday'] or holidays[-1]['holiday_name'] != translated_name:
-                    holiday_info['is_first_day'] = True
-                
-                # 优化日志输出，仅在假期变化时打印
-                if translated_name != prev_holiday_name:
-                    logger.info(f"{current_date} 是节假日: {translated_name}")
-                    if is_lieu:
-                        logger.info(f"  -> {current_date} 是调休日")
-                    prev_holiday_name = translated_name
-            
-            holidays.append(holiday_info)
-            
-        except Exception as e:
-            logger.warning(f"处理日期 {current_date} 时出错: {e}")
-            # 出错时添加默认记录以保证数据完整性
-            holidays.append({
-                'date': current_date.isoformat(), 'holiday_name': '', 'is_holiday': False,
-                'is_workday': True, 'is_in_lieu': False, 'is_first_day': False, 'is_last_day': False
-            })
-        
-        current_date += timedelta(days=1)
-    
-    # 从后向前遍历，标记假期的最后一天
-    for i in range(len(holidays) - 1, -1, -1):
-        # 当前是假期，并且是最后一天或者后一天不是假期
-        if holidays[i]['is_holiday'] and (i == len(holidays) - 1 or not holidays[i+1]['is_holiday']):
-            holidays[i]['is_last_day'] = True
-            
-    return holidays
-
-
-async def get_current_year_holidays(json_file: str = None) -> list:
-    """
-    获取当前年份的节假日数据，优先从缓存加载。
-
-    Args:
-        json_file (str, optional): 缓存文件的路径。
-
-    Returns:
-        list: 当前年份的节假日数据列表。
-    """
-    current_year = datetime.now().year
-    saved_year, saved_holidays = load_holidays_from_json(json_file)
-
-    if saved_year == current_year and saved_holidays:
-        logger.info(f"已从缓存加载 {current_year} 年节假日数据，共 {len(saved_holidays)} 条记录。")
-        return saved_holidays
-    else:
-        logger.info(f"未找到 {current_year} 年的缓存或数据已过时，正在重新获取...")
-        holidays = await get_year_holidays(current_year)
-        save_holidays_to_json(current_year, holidays, json_file)
-        return holidays
-
-
-def print_holidays_summary(holidays: list, year: int):
-    """
-    在日志中输出指定年份节假日数据的统计摘要。
-
-    Args:
-        holidays (list): 节假日数据列表。
-        year (int): 对应的年份。
-    """
-    logger.info(f"--- {year} 年节假日摘要 ---")
-    total_days = len(holidays)
-    holiday_count = sum(1 for h in holidays if h['is_holiday'])
-    workday_count = sum(1 for h in holidays if h['is_workday'])
-    lieu_count = sum(1 for h in holidays if h['is_in_lieu'])
-    first_day_count = sum(1 for h in holidays if h['is_first_day'])
-    logger.info(f"总天数: {total_days}")
-    logger.info(f"总节假日天数: {holiday_count}")
-    logger.info(f"总工作日天数: {workday_count}")
-    logger.info(f"其中调休日数: {lieu_count}")
-    logger.info(f"假期第一天总数: {first_day_count}")
-    logger.info("--------------------------")
-
-
-def check_single_date(date_input: date, holidays: list):
-    """
-    在日志中打印单个日期的节假日状态（主要用于调试）。
-
-    Args:
-        date_input (date): 要查询的日期。
-        holidays (list): 已加载的节假日数据列表。
-    """
-    for h in holidays:
-        if h['date'] == date_input.isoformat():
-            if h['is_holiday']:
-                logger.info(f"查询结果: {date_input} 是假期 - {h['holiday_name']}")
-            else:
-                logger.info(f"查询结果: {date_input} 是工作日")
-            if h['is_in_lieu']:
-                logger.info(f"  -> (调休)")
-            return
-    logger.info(f"查询结果: 在 {date_input.year} 年的记录中未找到 {date_input}。")
-
-
-@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.1.0")
+@register("SendBlessings", "Cheng-MaoMao", "在节假日自动送上祝福并配图", "1.1.1")
 class SendBlessingsPlugin(Star):
     """
     自动发送节假日祝福插件。
@@ -283,8 +79,8 @@ class SendBlessingsPlugin(Star):
                 return
             
             # 加载或获取当前年份的节假日数据
-            self.holidays = await get_current_year_holidays(self.json_file)
-            print_holidays_summary(self.holidays, datetime.now().year)
+            self.holidays = await self._get_current_year_holidays(self.json_file)
+            self._print_holidays_summary(self.holidays, datetime.now().year)
             
             # 启动每日祝福检查的后台循环任务
             asyncio.create_task(self.daily_blessing_checker())
@@ -309,7 +105,7 @@ class SendBlessingsPlugin(Star):
         [管理员指令] 重新加载节假日数据。
         """
         try:
-            self.holidays = await get_current_year_holidays(self.json_file)
+            self.holidays = await self._get_current_year_holidays(self.json_file)
             yield event.plain_result(f"节假日数据已重新加载，共 {len(self.holidays)} 条记录。")
         except Exception as e:
             self.logger.error(f"重新加载节假日数据失败: {e}")
@@ -653,8 +449,8 @@ class SendBlessingsPlugin(Star):
                 if today.month == 12 and today.day == 31:
                     next_year = today.year + 1
                     self.logger.info(f"正在预加载 {next_year} 年的节假日数据...")
-                    self.holidays = await get_year_holidays(next_year)
-                    save_holidays_to_json(next_year, self.holidays, self.json_file)
+                    self.holidays = await self._get_year_holidays(next_year)
+                    self._save_holidays_to_json(next_year, self.holidays, self.json_file)
                 
             except asyncio.CancelledError:
                 self.logger.info("每日祝福检查任务被取消。")
@@ -915,3 +711,193 @@ class SendBlessingsPlugin(Star):
             except Exception as e:
                 self.logger.error(f"假期结束提醒任务发生严重错误: {e}")
                 await asyncio.sleep(3600) # 出错时等待1小时后重试
+
+    def _load_holidays_from_json(self, json_file: str) -> tuple[int | None, list]:
+        """
+        从JSON文件加载缓存的节假日数据。
+        """
+        if json_file is None:
+            json_file = 'holidays.json'
+        if os.path.exists(json_file):
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return data.get('year'), data.get('holidays', [])
+            except Exception as e:
+                self.logger.error(f"从 {json_file} 加载节假日数据失败: {e}")
+                return None, []
+        return None, []
+
+    def _save_holidays_to_json(self, year: int, holidays: list, json_file: str):
+        """
+        将节假日数据保存到JSON文件。
+        """
+        if json_file is None:
+            json_file = 'holidays.json'
+        data = {'year': year, 'holidays': holidays}
+        try:
+            with open(json_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"节假日数据已保存到 {json_file}")
+        except Exception as e:
+            self.logger.error(f"保存节假日数据到 {json_file} 失败: {e}")
+
+    async def _translate_holiday_names_batch(self, holiday_names: set) -> dict[str, str]:
+        """
+        使用LLM批量翻译节假日名称。
+        """
+        if not holiday_names:
+            return {}
+
+        # 构建原始名称到自身的映射，作为翻译失败时的后备
+        translations = {name: name for name in holiday_names}
+        
+        try:
+            provider = self.context.get_using_provider()
+            if not provider:
+                self.logger.warning("未找到可用的大语言模型提供商，跳过翻译。")
+                return translations
+
+            # 构建prompt
+            names_to_translate = list(holiday_names)
+            prompt = (
+                "请将以下英文节假日名称列表翻译成简体中文。请严格按照JSON格式返回一个字典，"
+                "其中键是原始的英文名称，值是对应的中文翻译。\n"
+                "如果某个词已经是中文或者无法翻译，请在值中返回其原始形式。\n"
+                "确保返回的JSON是完整且有效的。\n\n"
+                f"要翻译的名称: {json.dumps(names_to_translate, ensure_ascii=False)}"
+            )
+            
+            system_prompt = "你是一个专业的翻译引擎，专门将节假日名称从英文翻译成中文，并以JSON格式返回结果。"
+
+            # 调用LLM
+            resp = await provider.text_chat(prompt=prompt, system_prompt=system_prompt)
+
+            if resp and resp.completion_text:
+                # 解析LLM返回的JSON
+                try:
+                    # 从Markdown代码块中提取JSON
+                    match = re.search(r'```json\s*([\s\S]+?)\s*```', resp.completion_text)
+                    json_str = match.group(1) if match else resp.completion_text
+                    
+                    llm_translations = json.loads(json_str)
+                    
+                    if isinstance(llm_translations, dict):
+                        # 更新翻译结果，仅当LLM提供了有效翻译时
+                        for name, translated in llm_translations.items():
+                            if name in translations and translated:
+                                translations[name] = translated
+                        self.logger.info(f"成功批量翻译 {len(llm_translations)} 个节假日名称。")
+                    else:
+                        self.logger.warning("LLM返回的不是一个有效的JSON字典。")
+                except (json.JSONDecodeError, AttributeError) as e:
+                    self.logger.error(f"解析LLM翻译结果失败: {e}\n原始返回: {resp.completion_text}")
+        
+        except Exception as e:
+            self.logger.error(f"批量翻译节假日名称时发生严重错误: {e}")
+
+        # 确保所有原始名称都有一个返回值
+        for name in holiday_names:
+            if name not in translations or not translations[name]:
+                translations[name] = name
+                
+        return translations
+
+    async def _get_year_holidays(self, year: int) -> list:
+        """
+        获取指定年份的完整节假日信息，采用批量翻译。
+        """
+        start_date = date(year, 1, 1)
+        end_date = date(year, 12, 31)
+        current_date = start_date
+        
+        # 第一次循环：收集所有需要翻译的节假日名称
+        holiday_names_to_translate = set()
+        raw_holiday_data = []
+        self.logger.info(f"正在收集 {year} 年的节假日信息...")
+        while current_date <= end_date:
+            on_holiday, holiday_name = ch_calendar.get_holiday_detail(current_date)
+            raw_holiday_data.append({'date': current_date, 'on_holiday': on_holiday, 'holiday_name': holiday_name})
+            if on_holiday and holiday_name:
+                holiday_names_to_translate.add(holiday_name)
+            current_date += timedelta(days=1)
+
+        # 批量翻译
+        translated_names = await self._translate_holiday_names_batch(holiday_names_to_translate)
+
+        # 第二次循环：构建最终的节假日列表
+        holidays = []
+        prev_holiday_name = None
+        self.logger.info(f"正在处理和构建 {year} 年的最终节假日数据...")
+        for raw_data in raw_holiday_data:
+            current_date = raw_data['date']
+            on_holiday = raw_data['on_holiday']
+            original_holiday_name = raw_data['holiday_name']
+            
+            is_hol = is_holiday(current_date)
+            is_work = is_workday(current_date)
+            is_lieu = ch_calendar.is_in_lieu(current_date)
+
+            translated_name = translated_names.get(original_holiday_name, original_holiday_name) if on_holiday and original_holiday_name else ''
+
+            holiday_info = {
+                'date': current_date.isoformat(),
+                'holiday_name': translated_name,
+                'is_holiday': is_hol,
+                'is_workday': is_work,
+                'is_in_lieu': is_lieu,
+                'is_first_day': False,
+                'is_last_day': False
+            }
+
+            if on_holiday and translated_name:
+                if not holidays or not holidays[-1]['is_holiday'] or holidays[-1]['holiday_name'] != translated_name:
+                    holiday_info['is_first_day'] = True
+                
+                if translated_name != prev_holiday_name:
+                    self.logger.info(f"{current_date} 是节假日: {translated_name}")
+                    if is_lieu:
+                        self.logger.info(f"  -> {current_date} 是调休日")
+                    prev_holiday_name = translated_name
+            
+            holidays.append(holiday_info)
+
+        # 标记假期的最后一天
+        for i in range(len(holidays) - 1, -1, -1):
+            if holidays[i]['is_holiday'] and (i == len(holidays) - 1 or not holidays[i+1]['is_holiday']):
+                holidays[i]['is_last_day'] = True
+                
+        return holidays
+
+    async def _get_current_year_holidays(self, json_file: str = None) -> list:
+        """
+        获取当前年份的节假日数据，优先从缓存加载。
+        """
+        current_year = datetime.now().year
+        saved_year, saved_holidays = self._load_holidays_from_json(json_file)
+
+        if saved_year == current_year and saved_holidays:
+            self.logger.info(f"已从缓存加载 {current_year} 年节假日数据，共 {len(saved_holidays)} 条记录。")
+            return saved_holidays
+        else:
+            self.logger.info(f"未找到 {current_year} 年的缓存或数据已过时，正在重新获取...")
+            holidays = await self._get_year_holidays(current_year)
+            self._save_holidays_to_json(current_year, holidays, json_file)
+            return holidays
+
+    def _print_holidays_summary(self, holidays: list, year: int):
+        """
+        在日志中输出指定年份节假日数据的统计摘要。
+        """
+        self.logger.info(f"--- {year} 年节假日摘要 ---")
+        total_days = len(holidays)
+        holiday_count = sum(1 for h in holidays if h['is_holiday'])
+        workday_count = sum(1 for h in holidays if h['is_workday'])
+        lieu_count = sum(1 for h in holidays if h['is_in_lieu'])
+        first_day_count = sum(1 for h in holidays if h['is_first_day'])
+        self.logger.info(f"总天数: {total_days}")
+        self.logger.info(f"总节假日天数: {holiday_count}")
+        self.logger.info(f"总工作日天数: {workday_count}")
+        self.logger.info(f"其中调休日数: {lieu_count}")
+        self.logger.info(f"假期第一天总数: {first_day_count}")
+        self.logger.info("--------------------------")
