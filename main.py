@@ -264,6 +264,8 @@ class SendBlessingsPlugin(Star):
         self.reference_image_paths = self.reference_images_config.get("image_paths", [])
         self.max_reference_images = self.reference_images_config.get("max_images", 3)
         
+        self.generate_images_enabled = config.get("generate_images", True)
+        
         self.holidays = []
         self.logger = logger
 
@@ -353,17 +355,17 @@ class SendBlessingsPlugin(Star):
                 yield event.plain_result("祝福语生成失败。")
                 return
             
-            # 2. 生成图片
-            image_url, image_path = await self.generate_image(blessing, holiday_name)
-            if not image_url:
-                yield event.plain_result("图片生成失败。")
-                return
+            # 2. 构建消息链并根据配置生成图片
+            chain = [Comp.Plain(blessing)]
+            if self.generate_images_enabled:
+                image_url, image_path = await self.generate_image(blessing, holiday_name)
+                if image_url and image_path:
+                    chain.append(Comp.Image.fromFileSystem(image_path))
+                else:
+                    chain.append(Comp.Plain("\n(图片生成失败)"))
             
             # 3. 发送到当前会话
-            if image_path:
-                yield event.chain_result([Comp.Plain(blessing), Comp.Image.fromFileSystem(image_path)])
-            else:
-                yield event.plain_result(f"{blessing}\n(图片生成失败)")
+            yield event.chain_result(chain)
             yield event.plain_result("手动祝福已发送到当前会话！")
         except Exception as e:
             self.logger.error(f"手动祝福失败: {e}")
@@ -394,16 +396,15 @@ class SendBlessingsPlugin(Star):
                 yield event.plain_result("祝福语生成失败，测试中止。")
                 return
             
-            image_url, image_path = await self.generate_image(blessing, holiday_name)
-            if not image_url:
-                yield event.plain_result("图片生成失败，测试中止。")
-                return
-
-            # 2. 构建消息链
-            chain = [
-                Comp.Plain(blessing),
-                Comp.Image.fromFileSystem(image_path) if image_path else Comp.Plain("(图片生成失败)")
-            ]
+            # 2. 构建消息链并根据配置生成图片
+            chain = [Comp.Plain(blessing)]
+            if self.generate_images_enabled:
+                image_url, image_path = await self.generate_image(blessing, holiday_name)
+                if image_url and image_path:
+                    chain.append(Comp.Image.fromFileSystem(image_path))
+                else:
+                    yield event.plain_result("图片生成失败，测试中止。")
+                    return
 
             # 3. 发送消息
             success_count = 0
@@ -595,15 +596,13 @@ class SendBlessingsPlugin(Star):
                         self.logger.error("祝福语生成失败，跳过本次发送。")
                         continue
                     
-                    image_url, image_path = await self.generate_image(blessing, holiday_name)
-                    if not image_url:
-                        self.logger.error("图片生成失败，跳过本次发送。")
-                        continue
-                    
-                    chain = [
-                        Comp.Plain(blessing),
-                        Comp.Image.fromFileSystem(image_path) if image_path else Comp.Plain("(图片生成失败)")
-                    ]
+                    chain = [Comp.Plain(blessing)]
+                    if self.generate_images_enabled:
+                        image_url, image_path = await self.generate_image(blessing, holiday_name)
+                        if image_url and image_path:
+                            chain.append(Comp.Image.fromFileSystem(image_path))
+                        else:
+                            self.logger.error("图片生成失败，本次将只发送文字祝福。")
                     
                     # --- 平台无关的广播逻辑 ---
                     sent_count = 0
@@ -855,16 +854,14 @@ class SendBlessingsPlugin(Star):
                     blessing = await self.generate_end_of_holiday_blessing(holiday_name)
                     
                     # 2. 生成图片
-                    image_url, image_path = await self.generate_image(blessing, holiday_name)
-                    if not image_url:
-                        self.logger.error("假期结束提醒的图片生成失败，将只发送文字。")
-
                     # 3. 构建消息链
                     chain = [Comp.Plain(blessing)]
-                    if image_path:
-                        chain.append(Comp.Image.fromFileSystem(image_path))
-                    else:
-                        chain.append(Comp.Plain("\n(图片生成失败)"))
+                    if self.generate_images_enabled:
+                        image_url, image_path = await self.generate_image(blessing, holiday_name)
+                        if image_url and image_path:
+                            chain.append(Comp.Image.fromFileSystem(image_path))
+                        else:
+                            self.logger.error("假期结束提醒的图片生成失败，将只发送文字。")
 
                     # 4. 发送到所有目标会话
                     sent_count = 0
