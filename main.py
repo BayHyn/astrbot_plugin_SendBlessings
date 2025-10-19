@@ -207,7 +207,7 @@ class SendBlessingsPlugin(Star):
             for group_id in group_ids:
                 sent_on_any_platform = False
                 for platform in self.context.platform_manager.get_insts():
-                    session_str = f"{platform.name}:{MessageType.GROUP_MESSAGE.value}:{group_id}"
+                    session_str = f"{platform.meta.name}:{MessageType.GROUP_MESSAGE.value}:{group_id}"
                     try:
                         if await self.context.send_message(session_str, chain):
                             success_count += 1
@@ -225,7 +225,7 @@ class SendBlessingsPlugin(Star):
             for user_id in user_ids:
                 sent_on_any_platform = False
                 for platform in self.context.platform_manager.get_insts():
-                    session_str = f"{platform.name}:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                    session_str = f"{platform.meta.name}:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
                     try:
                         if await self.context.send_message(session_str, chain):
                             success_count += 1
@@ -406,7 +406,7 @@ class SendBlessingsPlugin(Star):
                         if not hasattr(platform, "get_client") or not platform.get_client() or not hasattr(platform.get_client().api, "call_action"):
                             continue
                         
-                        self.logger.info(f"正在通过平台 '{platform.name}' 进行广播...")
+                        self.logger.info(f"正在通过平台 '{platform.meta.name}' 进行广播...")
                         client = platform.get_client()
                         
                         try:
@@ -417,7 +417,7 @@ class SendBlessingsPlugin(Star):
                             for friend in friend_list:
                                 user_id = friend.get('user_id')
                                 if not user_id: continue
-                                session_str = f"{platform.name}:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                                session_str = f"{platform.meta.name}:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
                                 try:
                                     await self.context.send_message(session_str, chain)
                                     sent_count += 1
@@ -430,7 +430,7 @@ class SendBlessingsPlugin(Star):
                             for group in group_list:
                                 group_id = group.get('group_id')
                                 if not group_id: continue
-                                session_str = f"{platform.name}:{MessageType.GROUP_MESSAGE.value}:{group_id}"
+                                session_str = f"{platform.meta.name}:{MessageType.GROUP_MESSAGE.value}:{group_id}"
                                 try:
                                     await self.context.send_message(session_str, chain)
                                     sent_count += 1
@@ -665,7 +665,7 @@ class SendBlessingsPlugin(Star):
                         if not hasattr(platform, "get_client") or not platform.get_client() or not hasattr(platform.get_client().api, "call_action"):
                             continue
                         
-                        self.logger.info(f"正在通过平台 '{platform.name}' 发送假期结束提醒...")
+                        self.logger.info(f"正在通过平台 '{platform.meta.name}' 发送假期结束提醒...")
                         client = platform.get_client()
                         
                         try:
@@ -676,7 +676,7 @@ class SendBlessingsPlugin(Star):
                             for friend in friend_list:
                                 user_id = friend.get('user_id')
                                 if not user_id: continue
-                                session_str = f"{platform.name}:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
+                                session_str = f"{platform.meta.name}:{MessageType.FRIEND_MESSAGE.value}:{user_id}"
                                 try:
                                     await self.context.send_message(session_str, chain)
                                     sent_count += 1
@@ -689,7 +689,7 @@ class SendBlessingsPlugin(Star):
                             for group in group_list:
                                 group_id = group.get('group_id')
                                 if not group_id: continue
-                                session_str = f"{platform.name}:{MessageType.GROUP_MESSAGE.value}:{group_id}"
+                                session_str = f"{platform.meta.name}:{MessageType.GROUP_MESSAGE.value}:{group_id}"
                                 try:
                                     await self.context.send_message(session_str, chain)
                                     sent_count += 1
