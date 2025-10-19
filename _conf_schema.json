@@ -33,12 +33,6 @@
         "hint": "当API请求失败时，每个密钥最多重试几次。推荐2-5次。",
         "default": 3
     },
-    "generate_images": {
-        "description": "是否在发送祝福时生成并附带图片",
-        "type": "bool",
-        "default": true,
-        "obvious_hint": true
-    },
     "holidays_file": {
         "description": "节假日数据文件名",
         "type": "string",
