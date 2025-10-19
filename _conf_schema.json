@@ -4,6 +4,12 @@
         "type": "bool",
         "default": true
     },
+    "generate_images_enabled": {
+        "description": "是否启用图片生成功能",
+        "type": "bool",
+        "hint": "如果禁用，插件将只发送祝福语文本，不生成和发送图片。",
+        "default": true
+    },
     "openrouter_api_keys": {
         "description": "OpenRouter API 密钥列表",
         "type": "list",
